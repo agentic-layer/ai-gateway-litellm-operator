@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
+	"github.com/agentic-layer/ai-gateway-litellm/internal/constants"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -34,13 +35,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// Condition constants
-const (
-	TypeLitellm                = "litellm"
-	ModelRouterConfigured      = "ModelRouterConfigured"
-	ModelRouterReady           = "ModelRouterReady"
-	ModelRouterDiscoveryFailed = "ModelRouterDiscoveryFailed"
-)
 
 // ModelRouterReconciler reconciles a ModelRouter object
 type ModelRouterReconciler struct {
@@ -69,7 +63,7 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	if modelRouter.Spec.Type != TypeLitellm {
+	if modelRouter.Spec.Type != constants.TypeLitellm {
 		log.Info("Ignoring ModelRouter resource that is not of type litellm")
 		return ctrl.Result{}, nil
 	}
@@ -84,22 +78,22 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Step 1: Validate ModelRouter configuration
 	if err := r.validateModelRouterConfig(&modelRouter); err != nil {
 		log.Error(err, "Invalid ModelRouter configuration")
-		r.updateCondition(&modelRouter, ModelRouterConfigured, metav1.ConditionFalse,
-			"ConfigurationInvalid", fmt.Sprintf("ModelRouter configuration validation failed: %v", err))
-		r.updateCondition(&modelRouter, ModelRouterReady, metav1.ConditionFalse,
-			"ConfigurationInvalid", "ModelRouter not ready due to invalid configuration")
+		r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionFalse,
+			constants.ReasonConfigurationInvalid, fmt.Sprintf("ModelRouter configuration validation failed: %v", err))
+		r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionFalse,
+			constants.ReasonConfigurationInvalid, "ModelRouter not ready due to invalid configuration")
 		return r.updateStatus(ctx, &modelRouter, ctrl.Result{}, nil)
 	}
-	r.updateCondition(&modelRouter, ModelRouterConfigured, metav1.ConditionTrue,
-		"ConfigurationValid", "ModelRouter configuration validation passed")
+	r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionTrue,
+		constants.ReasonConfigurationValid, "ModelRouter configuration validation passed")
 
 	// Step 2: Generate configuration
 	configData, configHash, err := r.generateModelRouterConfig(ctx, &modelRouter)
 	if err != nil {
 		log.Error(err, "Failed to generate configuration")
-		r.updateCondition(&modelRouter, ModelRouterConfigured, metav1.ConditionFalse,
+		r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionFalse,
 			"ConfigGenerationFailed", fmt.Sprintf("Failed to generate config: %v", err))
-		r.updateCondition(&modelRouter, ModelRouterReady, metav1.ConditionFalse,
+		r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionFalse,
 			"ConfigGenerationFailed", "ModelRouter not ready due to config generation failure")
 		return r.updateStatus(ctx, &modelRouter, ctrl.Result{}, nil)
 	}
@@ -107,7 +101,7 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Step 3: Create/update ConfigMap with configuration
 	if err := r.reconcileConfigMap(ctx, &modelRouter, configData, configHash); err != nil {
 		log.Error(err, "Failed to reconcile ConfigMap")
-		r.updateCondition(&modelRouter, ModelRouterConfigured, metav1.ConditionFalse,
+		r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionFalse,
 			"ConfigMapFailed", fmt.Sprintf("Failed to create/update ConfigMap: %v", err))
 		return r.updateStatus(ctx, &modelRouter, ctrl.Result{}, nil)
 	}
@@ -115,7 +109,7 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Step 4: Create/update Deployment
 	if err := r.reconcileDeployment(ctx, &modelRouter, configHash); err != nil {
 		log.Error(err, "Failed to reconcile Deployment")
-		r.updateCondition(&modelRouter, ModelRouterReady, metav1.ConditionFalse,
+		r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionFalse,
 			"DeploymentFailed", fmt.Sprintf("Failed to create/update Deployment: %v", err))
 		return r.updateStatus(ctx, &modelRouter, ctrl.Result{}, nil)
 	}
@@ -123,7 +117,7 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Step 5: Create/update Service
 	if err := r.reconcileService(ctx, &modelRouter); err != nil {
 		log.Error(err, "Failed to reconcile Service")
-		r.updateCondition(&modelRouter, ModelRouterReady, metav1.ConditionFalse,
+		r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionFalse,
 			"ServiceFailed", fmt.Sprintf("Failed to create/update Service: %v", err))
 		return r.updateStatus(ctx, &modelRouter, ctrl.Result{}, nil)
 	}
@@ -133,10 +127,10 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	now := metav1.Now()
 	modelRouter.Status.LastUpdated = &now
 
-	r.updateCondition(&modelRouter, ModelRouterConfigured, metav1.ConditionTrue,
-		"ConfigurationApplied", "ModelRouter configuration successfully applied")
-	r.updateCondition(&modelRouter, ModelRouterReady, metav1.ConditionTrue,
-		"ModelRouterReady", "ModelRouter is ready and serving traffic")
+	r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionTrue,
+		constants.ReasonConfigurationApplied, "ModelRouter configuration successfully applied")
+	r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionTrue,
+		constants.ReasonModelRouterReady, "ModelRouter is ready and serving traffic")
 
 	log.Info("Successfully reconciled ModelRouter", "name", modelRouter.Name,
 		"aiModels", len(modelRouter.Spec.AiModels), "configHash", configHash[:8])
@@ -414,7 +408,7 @@ func (r *ModelRouterReconciler) buildEnvironmentVariables(modelRouter *gatewayv1
 				ValueFrom: &corev1.EnvVarSource{
 					SecretKeyRef: &corev1.SecretKeySelector{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "api-key-secrets",
+							Name: constants.DefaultSecretName,
 						},
 						Key:      envVarName,
 						Optional: &[]bool{true}[0], // Make optional so deployment doesn't fail if secret missing

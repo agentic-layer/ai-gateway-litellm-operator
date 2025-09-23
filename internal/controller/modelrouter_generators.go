@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
+	"github.com/agentic-layer/ai-gateway-litellm/internal/constants"
 )
 
 // ModelRouterConfigGenerator defines the interface for generating model router configurations
@@ -146,7 +147,7 @@ func (g *LiteLLMGenerator) Generate(ctx context.Context, modelRouter *gatewayv1a
 	config := LiteLLMConfig{
 		ModelList: modelList,
 		LiteLLMSettings: LiteLLMSettings{
-			RequestTimeout: 600, // 10 minutes default timeout
+			RequestTimeout: constants.DefaultRequestTimeout, // 10 minutes default timeout
 		},
 	}
 
