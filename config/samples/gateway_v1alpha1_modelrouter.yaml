@@ -1,0 +1,9 @@
+apiVersion: gateway.agentic-layer.ai/v1alpha1
+kind: ModelRouter
+metadata:
+  labels:
+    app.kubernetes.io/name: ai-gateway-litellm
+    app.kubernetes.io/managed-by: kustomize
+  name: modelrouter-sample
+spec:
+  # TODO(user): Add fields here

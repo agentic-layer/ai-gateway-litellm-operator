@@ -1,0 +1,32 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - gateway.agentic-layer.ai
+  resources:
+  - modelrouters
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gateway.agentic-layer.ai
+  resources:
+  - modelrouters/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - gateway.agentic-layer.ai
+  resources:
+  - modelrouters/status
+  verbs:
+  - get
+  - patch
+  - update
