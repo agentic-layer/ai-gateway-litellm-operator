@@ -22,6 +22,7 @@ import (
 
 	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/constants"
+	"github.com/agentic-layer/ai-gateway-litellm/internal/equality"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -195,8 +196,16 @@ func (r *ModelRouterReconciler) reconcileConfigMap(ctx context.Context, modelRou
 		return fmt.Errorf("failed to get ConfigMap: %w", err)
 	}
 
-	// Update if needed
+	// Update if needed using equality utilities
+	needsUpdate := false
 	if existing.Data["config.yaml"] != configData {
+		needsUpdate = true
+	}
+	if !equality.LabelsEqual(existing.Labels, configMap.Labels) {
+		needsUpdate = true
+	}
+
+	if needsUpdate {
 		log.Info("Updating ConfigMap", "name", configMap.Name)
 		existing.Data = configMap.Data
 		existing.Labels = configMap.Labels
@@ -296,19 +305,35 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 		return fmt.Errorf("failed to get Deployment: %w", err)
 	}
 
-	// Update if needed (check for actual changes)
+	// Update if needed using equality utilities
 	needsUpdate := false
-	if existing.Labels["gateway.agentic-layer.ai/config-hash"] != configHash {
-		existing.Labels = deployment.Labels
+
+	// Check labels for changes
+	if !equality.LabelsEqual(existing.Labels, deployment.Labels) {
 		needsUpdate = true
 	}
-	if existing.Spec.Template.Spec.Containers[0].Image != deployment.Spec.Template.Spec.Containers[0].Image {
-		existing.Spec = deployment.Spec
+
+	// Check template labels for changes
+	if !equality.LabelsEqual(existing.Spec.Template.Labels, deployment.Spec.Template.Labels) {
 		needsUpdate = true
+	}
+
+	// Check environment variables for changes
+	if len(existing.Spec.Template.Spec.Containers) > 0 && len(deployment.Spec.Template.Spec.Containers) > 0 {
+		if !equality.EnvVarsEqual(existing.Spec.Template.Spec.Containers[0].Env, deployment.Spec.Template.Spec.Containers[0].Env) {
+			needsUpdate = true
+		}
+
+		// Check image changes
+		if existing.Spec.Template.Spec.Containers[0].Image != deployment.Spec.Template.Spec.Containers[0].Image {
+			needsUpdate = true
+		}
 	}
 
 	if needsUpdate {
 		log.Info("Updating Deployment", "name", deployment.Name)
+		existing.Labels = deployment.Labels
+		existing.Spec = deployment.Spec
 		return r.Update(ctx, existing)
 	}
 
@@ -362,9 +387,21 @@ func (r *ModelRouterReconciler) reconcileService(ctx context.Context, modelRoute
 		return fmt.Errorf("failed to get Service: %w", err)
 	}
 
-	// Update if needed (safe port checking)
+	// Update if needed using equality utilities
+	needsUpdate := false
+
+	// Check labels for changes
+	if !equality.LabelsEqual(existing.Labels, service.Labels) {
+		needsUpdate = true
+	}
+
+	// Check ports for changes (safe checking)
 	if len(existing.Spec.Ports) > 0 && len(service.Spec.Ports) > 0 &&
 		existing.Spec.Ports[0].Port != service.Spec.Ports[0].Port {
+		needsUpdate = true
+	}
+
+	if needsUpdate {
 		log.Info("Updating Service", "name", service.Name)
 		existing.Spec.Ports = service.Spec.Ports
 		existing.Labels = service.Labels
