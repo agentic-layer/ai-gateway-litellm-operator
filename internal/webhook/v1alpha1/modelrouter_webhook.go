@@ -18,13 +18,14 @@ package v1alpha1
 
 import (
 	"context"
+	"errors"
 	"fmt"
-
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	"strings"
 
 	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
 )
@@ -41,8 +42,6 @@ func SetupModelRouterWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
 // +kubebuilder:webhook:path=/mutate-gateway-agentic-layer-ai-v1alpha1-modelrouter,mutating=true,failurePolicy=fail,sideEffects=None,groups=gateway.agentic-layer.ai,resources=modelrouters,verbs=create;update,versions=v1alpha1,name=mmodelrouter-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // ModelRouterCustomDefaulter struct is responsible for setting default values on the custom resource of the
@@ -51,7 +50,6 @@ func SetupModelRouterWebhookWithManager(mgr ctrl.Manager) error {
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as it is used only for temporary operations and does not need to be deeply copied.
 type ModelRouterCustomDefaulter struct {
-	// TODO(user): Add more fields as needed for defaulting
 }
 
 var _ webhook.CustomDefaulter = &ModelRouterCustomDefaulter{}
@@ -65,12 +63,14 @@ func (d *ModelRouterCustomDefaulter) Default(_ context.Context, obj runtime.Obje
 	}
 	modelrouterlog.Info("Defaulting for ModelRouter", "name", modelrouter.GetName())
 
-	// TODO(user): fill in your defaulting logic.
+	const DefaultPort = 4000
+	if modelrouter.Spec.Port == 0 {
+		modelrouter.Spec.Port = DefaultPort
+	}
 
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 // NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
 // Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
 // +kubebuilder:webhook:path=/validate-gateway-agentic-layer-ai-v1alpha1-modelrouter,mutating=false,failurePolicy=fail,sideEffects=None,groups=gateway.agentic-layer.ai,resources=modelrouters,verbs=create;update,versions=v1alpha1,name=vmodelrouter-v1alpha1.kb.io,admissionReviewVersions=v1
@@ -81,35 +81,32 @@ func (d *ModelRouterCustomDefaulter) Default(_ context.Context, obj runtime.Obje
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type ModelRouterCustomValidator struct {
-	// TODO(user): Add more fields as needed for validation
 }
 
 var _ webhook.CustomValidator = &ModelRouterCustomValidator{}
 
+// Use a constant for the separator to avoid magic strings.
+const providerModelSeparator = "/"
+
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type ModelRouter.
 func (v *ModelRouterCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	modelrouter, ok := obj.(*gatewayv1alpha1.ModelRouter)
+	modelRouter, ok := obj.(*gatewayv1alpha1.ModelRouter)
 	if !ok {
+		// This error is for the webhook runtime, not the user.
 		return nil, fmt.Errorf("expected a ModelRouter object but got %T", obj)
 	}
-	modelrouterlog.Info("Validation for ModelRouter upon creation", "name", modelrouter.GetName())
-
-	// TODO(user): fill in your validation logic upon object creation.
-
-	return nil, nil
+	modelrouterlog.Info("Validation for ModelRouter upon creation", "name", modelRouter.GetName())
+	return v.validateModelRouterSpec(modelRouter)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type ModelRouter.
 func (v *ModelRouterCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	modelrouter, ok := newObj.(*gatewayv1alpha1.ModelRouter)
+	modelRouter, ok := newObj.(*gatewayv1alpha1.ModelRouter)
 	if !ok {
 		return nil, fmt.Errorf("expected a ModelRouter object for the newObj but got %T", newObj)
 	}
-	modelrouterlog.Info("Validation for ModelRouter upon update", "name", modelrouter.GetName())
-
-	// TODO(user): fill in your validation logic upon object update.
-
-	return nil, nil
+	modelrouterlog.Info("Validation for ModelRouter upon update", "name", modelRouter.GetName())
+	return v.validateModelRouterSpec(modelRouter)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type ModelRouter.
@@ -120,7 +117,28 @@ func (v *ModelRouterCustomValidator) ValidateDelete(ctx context.Context, obj run
 	}
 	modelrouterlog.Info("Validation for ModelRouter upon deletion", "name", modelrouter.GetName())
 
-	// TODO(user): fill in your validation logic upon object deletion.
+	return nil, nil
+}
+
+// validateModelRouterSpec contains the core validation logic for the ModelRouter spec.
+// It's called by both ValidateCreate and ValidateUpdate.
+func (v *ModelRouterCustomValidator) validateModelRouterSpec(modelRouter *gatewayv1alpha1.ModelRouter) (admission.Warnings, error) {
+	if modelRouter.Spec.Type == "" {
+		return nil, errors.New("model router must specify a type")
+	}
+
+	for _, model := range modelRouter.Spec.AiModels {
+		provider, modelName, found := strings.Cut(model.Name, providerModelSeparator)
+
+		// Handle malformed names like "gpt-4" (no separator) or "/gpt-4" (empty provider).
+		if !found || provider == "" || modelName == "" {
+			return nil, fmt.Errorf("model %q is malformed; format must be 'provider/model-name'", model.Name)
+		}
+
+		// LiteLLM supports a vast number of providers, so we don't validate against a specific list.
+		// The controller will handle provider-specific configuration and the LiteLLM proxy will
+		// validate the actual model availability at runtime.
+	}
 
 	return nil, nil
 }

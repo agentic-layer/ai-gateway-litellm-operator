@@ -28,14 +28,28 @@ type ModelRouterSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of ModelRouter. Edit modelrouter_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	Type     string    `json:"type"`
+	Port     int32     `json:"port,omitempty"`
+	AiModels []AiModel `json:"aiModels,omitempty"`
+}
+
+type AiModel struct {
+	Name string `json:"name"`
 }
 
 // ModelRouterStatus defines the observed state of ModelRouter.
 type ModelRouterStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// ConfigHash represents the hash of the current configuration
+	ConfigHash string `json:"configHash,omitempty"`
+
+	// LastUpdated is the timestamp when the ModelRouter was last updated
+	LastUpdated *metav1.Time `json:"lastUpdated,omitempty"`
+
+	// +operator-sdk:csv:customresourcedefinitions:type=status
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 // +kubebuilder:object:root=true

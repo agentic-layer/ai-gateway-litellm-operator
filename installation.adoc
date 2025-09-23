@@ -1,0 +1,31 @@
+== Usage
+
+=== Post-Operator-Installation
+
+==== Create a secret for the API Keys
+
+Assuming the Operator and all CRDs are installed in the cluster, first create a secret containing credentials for the LLM providers.
+
+[source,bash]
+----
+kubectl create secret generic api-key-secrets --from-literal=OPENAI_API_KEY=$OPENAI_API_KEY --from-literal=GEMINI_API_KEY=$GEMINI_API_KEY --namespace my-namespace
+----
+
+==== Create the Model Router
+Next, create an instance of the LiteLLM model router:
+
+[source,yaml]
+----
+apiVersion: gateway.agentic-layer.ai/v1alpha1
+kind: ModelRouter
+metadata:
+  name: my-only-openai-router
+  namespace: my-namespace
+spec:
+  type: litellm
+  port: 8000
+  aiModels:
+    - name: openai/gpt-3.5
+----
+
+.. kubectl apply -f davon
