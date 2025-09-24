@@ -325,6 +325,18 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 		if existing.Spec.Template.Spec.Containers[0].Image != deployment.Spec.Template.Spec.Containers[0].Image {
 			needsUpdate = true
 		}
+
+		// Check port configuration changes
+		existingPorts := existing.Spec.Template.Spec.Containers[0].Ports
+		newPorts := deployment.Spec.Template.Spec.Containers[0].Ports
+		if len(existingPorts) != len(newPorts) {
+			needsUpdate = true
+		} else if len(existingPorts) > 0 && len(newPorts) > 0 {
+			// Check if the main container port changed
+			if existingPorts[0].ContainerPort != newPorts[0].ContainerPort {
+				needsUpdate = true
+			}
+		}
 	}
 
 	if needsUpdate {
