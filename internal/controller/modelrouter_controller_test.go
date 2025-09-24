@@ -110,18 +110,16 @@ var _ = Describe("ModelRouter Controller", func() {
 				Namespace: testNamespace,
 			}
 
-			By("Creating a ModelRouter with invalid type")
+			By("Creating a ModelRouter with invalid configuration (no AI models)")
 			modelRouter = &gatewayv1alpha1.ModelRouter{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName + "-invalid",
 					Namespace: testNamespace,
 				},
 				Spec: gatewayv1alpha1.ModelRouterSpec{
-					Type: invalidType,
-					Port: testPort,
-					AiModels: []gatewayv1alpha1.AiModel{
-						{Name: "gpt-4"},
-					},
+					Type:     validType, // Use valid type but invalid config
+					Port:     testPort,
+					AiModels: []gatewayv1alpha1.AiModel{}, // Empty models - this should be invalid
 				},
 			}
 			Expect(k8sClient.Create(ctx, modelRouter)).To(Succeed())
@@ -147,7 +145,7 @@ var _ = Describe("ModelRouter Controller", func() {
 			})
 
 			// Should handle the error gracefully (might requeue)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			// Verify that resources were not created due to invalid config
 			checkResourcesNotCreated(ctx, namespacedName)
@@ -200,7 +198,7 @@ var _ = Describe("ModelRouter Controller", func() {
 			})
 
 			// Should handle the error gracefully
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			// Check that the appropriate condition is set - should fail at config generation
 			checkStatusConditions(ctx, namespacedName, false)
