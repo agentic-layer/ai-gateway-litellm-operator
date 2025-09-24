@@ -92,7 +92,6 @@ metadata:
   name: my-litellm
 spec:
   type: litellm
-  port: 4000
   aiModels:
     - name: openai/gpt-3.5-turbo
     - name: gemini/gemini-1.5-pro
