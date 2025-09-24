@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-
 	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/constants"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/equality"
@@ -35,7 +34,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
-
 
 // ModelRouterReconciler reconciles a ModelRouter object
 type ModelRouterReconciler struct {
@@ -64,8 +62,7 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	if modelRouter.Spec.Type != constants.TypeLitellm {
-		log.Info("Ignoring ModelRouter resource that is not of type litellm")
+	if !r.shouldProcessModelRouter(ctx, &modelRouter) {
 		return ctrl.Result{}, nil
 	}
 
@@ -500,4 +497,11 @@ func (r *ModelRouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.ConfigMap{}).
 		Named("modelrouter").
 		Complete(r)
+}
+
+func (r *ModelRouterReconciler) shouldProcessModelRouter(ctx context.Context, modelRouter *gatewayv1alpha1.ModelRouter) bool {
+	// NOTE: In the future, we will check the modelRouter.Spec.ModelRouterClassName field.
+	// If the field is not set, but the litellm ModelRouterClass is the default, then we are also responsible and should process the router
+
+	return modelRouter.Spec.Type == constants.TypeLitellm
 }
