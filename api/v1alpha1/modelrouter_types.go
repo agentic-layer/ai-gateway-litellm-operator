@@ -25,6 +25,7 @@ import (
 
 // ModelRouterSpec defines the desired state of ModelRouter.
 type ModelRouterSpec struct {
+    // Review: move comments on how to customize modelRouter to beginning of file and/or create tutorial
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
