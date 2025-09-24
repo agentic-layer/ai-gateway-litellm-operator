@@ -20,16 +20,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // ModelRouterSpec defines the desired state of ModelRouter.
 type ModelRouterSpec struct {
-    // Review: move comments on how to customize modelRouter to beginning of file and/or create tutorial
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	Type     string    `json:"type"`
+	Type     string    `json:"type"` // NOTE: In the future, this will be a ModelRouterClass reference (similar to the AgentGatewayClass) instead.
 	Port     int32     `json:"port,omitempty"`
 	AiModels []AiModel `json:"aiModels,omitempty"`
 }
@@ -40,9 +33,6 @@ type AiModel struct {
 
 // ModelRouterStatus defines the observed state of ModelRouter.
 type ModelRouterStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
 	// ConfigHash represents the hash of the current configuration
 	ConfigHash string `json:"configHash,omitempty"`
 
