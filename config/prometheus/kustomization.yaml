@@ -1,5 +1,8 @@
-resources:
-- monitor.yaml
+# [PROMETHEUS] Monitor Service usage.
+# Requires prometheus-operator to be installed
+# More info: https://book.kubebuilder.io/reference/metrics
+#resources:
+#- monitor.yaml
 
 # [PROMETHEUS-WITH-CERTS] The following patch configures the ServiceMonitor in ../prometheus
 # to securely reference certificates created and managed by cert-manager.
