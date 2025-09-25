@@ -54,17 +54,18 @@ This guide walks you through deploying a LiteLLM instance using the ModelRouter 
 
 === Create API Key Secret
 
+
 First, create a secret containing credentials for the LLM providers you plan to use:
 
 [source,bash]
 ----
-kubectl create secret generic litellm-secrets \
+kubectl create secret generic api-key-secrets \
   --from-literal=OPENAI_API_KEY=$OPENAI_API_KEY \
   --from-literal=GEMINI_API_KEY=$GEMINI_API_KEY \
   --from-literal=ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 ----
 
-NOTE: The secret name must match the value configured in the operator. The default expected name is `litellm-secrets`. API keys that are not provided will not cause deployment failures - the corresponding models just won't be available.
+NOTE: The secret name must match the value configured in the operator. The default expected name is `api-key-secrets`. API keys that are not provided will not cause deployment failures - the corresponding models just won't be available.
 
 === Create a ModelRouter Resource
 
