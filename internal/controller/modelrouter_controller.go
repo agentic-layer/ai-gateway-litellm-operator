@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+
 	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/constants"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/equality"
@@ -62,7 +63,7 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	if !r.shouldProcessModelRouter(ctx, &modelRouter) {
+	if !r.shouldProcessModelRouter(&modelRouter) {
 		return ctrl.Result{}, nil
 	}
 
@@ -80,7 +81,10 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			constants.ReasonConfigurationInvalid, fmt.Sprintf("ModelRouter configuration validation failed: %v", err))
 		r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionFalse,
 			constants.ReasonConfigurationInvalid, "ModelRouter not ready due to invalid configuration")
-		return r.updateStatus(ctx, &modelRouter, ctrl.Result{}, nil)
+		if err := r.updateStatus(ctx, &modelRouter); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 	r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionTrue,
 		constants.ReasonConfigurationValid, "ModelRouter configuration validation passed")
@@ -93,7 +97,10 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			"ConfigGenerationFailed", fmt.Sprintf("Failed to generate config: %v", err))
 		r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionFalse,
 			"ConfigGenerationFailed", "ModelRouter not ready due to config generation failure")
-		return r.updateStatus(ctx, &modelRouter, ctrl.Result{}, nil)
+		if err := r.updateStatus(ctx, &modelRouter); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// Step 3: Create/update ConfigMap with configuration
@@ -101,7 +108,10 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Error(err, "Failed to reconcile ConfigMap")
 		r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionFalse,
 			"ConfigMapFailed", fmt.Sprintf("Failed to create/update ConfigMap: %v", err))
-		return r.updateStatus(ctx, &modelRouter, ctrl.Result{}, nil)
+		if err := r.updateStatus(ctx, &modelRouter); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// Step 4: Create/update Deployment
@@ -109,7 +119,10 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Error(err, "Failed to reconcile Deployment")
 		r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionFalse,
 			"DeploymentFailed", fmt.Sprintf("Failed to create/update Deployment: %v", err))
-		return r.updateStatus(ctx, &modelRouter, ctrl.Result{}, nil)
+		if err := r.updateStatus(ctx, &modelRouter); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// Step 5: Create/update Service
@@ -117,7 +130,10 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Error(err, "Failed to reconcile Service")
 		r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionFalse,
 			"ServiceFailed", fmt.Sprintf("Failed to create/update Service: %v", err))
-		return r.updateStatus(ctx, &modelRouter, ctrl.Result{}, nil)
+		if err := r.updateStatus(ctx, &modelRouter); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// Update successful status
@@ -133,7 +149,10 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	log.Info("Successfully reconciled ModelRouter", "name", modelRouter.Name,
 		"aiModels", len(modelRouter.Spec.AiModels), "configHash", configHash[:8])
 
-	return r.updateStatus(ctx, &modelRouter, ctrl.Result{}, nil)
+	if err := r.updateStatus(ctx, &modelRouter); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
 }
 
 // validateModelRouterConfig validates the ModelRouter configuration
@@ -194,10 +213,8 @@ func (r *ModelRouterReconciler) reconcileConfigMap(ctx context.Context, modelRou
 	}
 
 	// Update if needed using equality utilities
-	needsUpdate := false
-	if existing.Data["config.yaml"] != configData {
-		needsUpdate = true
-	}
+	needsUpdate := existing.Data["config.yaml"] != configData
+
 	if !equality.LabelsEqual(existing.Labels, configMap.Labels) {
 		needsUpdate = true
 	}
@@ -303,12 +320,9 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 	}
 
 	// Update if needed using equality utilities
-	needsUpdate := false
+	needsUpdate := !equality.LabelsEqual(existing.Labels, deployment.Labels)
 
 	// Check labels for changes
-	if !equality.LabelsEqual(existing.Labels, deployment.Labels) {
-		needsUpdate = true
-	}
 
 	// Check template labels for changes
 	if !equality.LabelsEqual(existing.Spec.Template.Labels, deployment.Spec.Template.Labels) {
@@ -397,12 +411,9 @@ func (r *ModelRouterReconciler) reconcileService(ctx context.Context, modelRoute
 	}
 
 	// Update if needed using equality utilities
-	needsUpdate := false
+	needsUpdate := !equality.LabelsEqual(existing.Labels, service.Labels)
 
 	// Check labels for changes
-	if !equality.LabelsEqual(existing.Labels, service.Labels) {
-		needsUpdate = true
-	}
 
 	// Check ports for changes (safe checking)
 	if len(existing.Spec.Ports) > 0 && len(service.Spec.Ports) > 0 &&
@@ -492,12 +503,12 @@ func (r *ModelRouterReconciler) updateCondition(modelRouter *gatewayv1alpha1.Mod
 }
 
 // updateStatus updates the ModelRouter status
-func (r *ModelRouterReconciler) updateStatus(ctx context.Context, modelRouter *gatewayv1alpha1.ModelRouter, result ctrl.Result, err error) (ctrl.Result, error) {
+func (r *ModelRouterReconciler) updateStatus(ctx context.Context, modelRouter *gatewayv1alpha1.ModelRouter) error {
 	if statusErr := r.Status().Update(ctx, modelRouter); statusErr != nil {
 		logf.FromContext(ctx).Error(statusErr, "Failed to update ModelRouter status")
-		return result, statusErr
+		return statusErr
 	}
-	return result, err
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -511,7 +522,7 @@ func (r *ModelRouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *ModelRouterReconciler) shouldProcessModelRouter(ctx context.Context, modelRouter *gatewayv1alpha1.ModelRouter) bool {
+func (r *ModelRouterReconciler) shouldProcessModelRouter(modelRouter *gatewayv1alpha1.ModelRouter) bool {
 	// NOTE: In the future, we will check the modelRouter.Spec.ModelRouterClassName field.
 	// If the field is not set, but the litellm ModelRouterClass is the default, then we are also responsible and should process the router
 

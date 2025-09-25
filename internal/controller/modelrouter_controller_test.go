@@ -328,7 +328,7 @@ func checkStatusConditions(ctx context.Context, namespacedName types.NamespacedN
 	} else {
 		// Should have failure conditions
 		conditions := modelRouter.Status.Conditions
-		Expect(len(conditions)).To(BeNumerically(">", 0))
+		Expect(conditions).ToNot(BeEmpty())
 
 		// At least one condition should be False
 		hasFailureCondition := false
