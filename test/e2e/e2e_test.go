@@ -68,10 +68,17 @@ var _ = Describe("Manager", Ordered, func() {
 			_, err := utils.Run(cmd)
 			g.Expect(err).NotTo(HaveOccurred())
 
+			// Check that the controller-manager pod is ready (not just running)
+			cmd = exec.Command("kubectl", "get", "pods", "-l", "control-plane=controller-manager",
+				"-n", namespace, "-o", "jsonpath={.items[0].status.conditions[?(@.type=='Ready')].status}")
+			output, err := utils.Run(cmd)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(output).To(Equal("True"), "Controller pod should be ready")
+
 			// Check that the webhook service has endpoints (meaning pods are ready)
 			cmd = exec.Command("kubectl", "get", "endpoints", "ai-gateway-litellm-webhook-service",
 				"-n", namespace, "-o", "jsonpath={.subsets[*].addresses[*].ip}")
-			output, err := utils.Run(cmd)
+			output, err = utils.Run(cmd)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(output).NotTo(BeEmpty(), "Webhook service should have endpoints")
 		}, 2*time.Minute, 5*time.Second).Should(Succeed(), "Webhook service should be ready")
