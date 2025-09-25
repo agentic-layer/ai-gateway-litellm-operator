@@ -219,7 +219,6 @@ func checkConfigMapReconciled(ctx context.Context, namespacedName types.Namespac
 
 	By("Verifying ConfigMap has correct labels")
 	Expect(configMap.Labels).To(HaveKeyWithValue("app", namespacedName.Name))
-	Expect(configMap.Labels).To(HaveKeyWithValue("type", "litellm"))
 
 	By("Verifying ConfigMap contains litellm configuration")
 	Expect(configMap.Data).To(HaveKey("config.yaml"))
@@ -245,7 +244,6 @@ func checkDeploymentReconciled(ctx context.Context, namespacedName types.Namespa
 
 	By("Verifying Deployment has correct labels")
 	Expect(deployment.Labels).To(HaveKeyWithValue("app", namespacedName.Name))
-	Expect(deployment.Labels).To(HaveKeyWithValue("type", "litellm"))
 
 	By("Verifying Deployment has correct replicas")
 	Expect(deployment.Spec.Replicas).NotTo(BeNil())
@@ -256,7 +254,9 @@ func checkDeploymentReconciled(ctx context.Context, namespacedName types.Namespa
 
 	By("Verifying Deployment pod template")
 	Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("app", namespacedName.Name))
-	Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("type", "litellm"))
+
+	By("Verifying Deployment pod template has config-hash annotation")
+	Expect(deployment.Spec.Template.Annotations).To(HaveKey("gateway.agentic-layer.ai/config-hash"))
 
 	By("Verifying Deployment has litellm container")
 	Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
@@ -290,7 +290,6 @@ func checkServiceReconciled(ctx context.Context, namespacedName types.Namespaced
 
 	By("Verifying Service has correct labels")
 	Expect(service.Labels).To(HaveKeyWithValue("app", namespacedName.Name))
-	Expect(service.Labels).To(HaveKeyWithValue("type", "litellm"))
 
 	By("Verifying Service has correct selector")
 	Expect(service.Spec.Selector).To(HaveKeyWithValue("app", namespacedName.Name))

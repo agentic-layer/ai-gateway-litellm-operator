@@ -212,3 +212,88 @@ func TestEnvVarsEqual(t *testing.T) {
 		})
 	}
 }
+
+func TestRequiredLabelsPresent(t *testing.T) {
+	testCases := []struct {
+		name     string
+		existing map[string]string
+		required map[string]string
+		want     bool
+	}{
+		{
+			name:     "should return true when all required labels are present with correct values",
+			existing: map[string]string{"app": "test", "version": "1.0", "other": "value"},
+			required: map[string]string{"app": "test", "version": "1.0"},
+			want:     true,
+		},
+		{
+			name:     "should return true when required labels are subset of existing",
+			existing: map[string]string{"app": "test", "managed-by": "other-operator", "version": "1.0"},
+			required: map[string]string{"app": "test"},
+			want:     true,
+		},
+		{
+			name:     "should return true when maps are identical",
+			existing: map[string]string{"app": "test", "type": "service"},
+			required: map[string]string{"app": "test", "type": "service"},
+			want:     true,
+		},
+		{
+			name:     "should return true when required is empty",
+			existing: map[string]string{"app": "test", "version": "1.0"},
+			required: map[string]string{},
+			want:     true,
+		},
+		{
+			name:     "should return true when both are empty",
+			existing: map[string]string{},
+			required: map[string]string{},
+			want:     true,
+		},
+		{
+			name:     "should return true when both are nil",
+			existing: nil,
+			required: nil,
+			want:     true,
+		},
+		{
+			name:     "should return false when required label is missing",
+			existing: map[string]string{"version": "1.0"},
+			required: map[string]string{"app": "test"},
+			want:     false,
+		},
+		{
+			name:     "should return false when required label has wrong value",
+			existing: map[string]string{"app": "wrong-value", "version": "1.0"},
+			required: map[string]string{"app": "test"},
+			want:     false,
+		},
+		{
+			name:     "should return false when existing is nil but required is not empty",
+			existing: nil,
+			required: map[string]string{"app": "test"},
+			want:     false,
+		},
+		{
+			name:     "should return false when existing is empty but required is not",
+			existing: map[string]string{},
+			required: map[string]string{"app": "test"},
+			want:     false,
+		},
+		{
+			name:     "should return false when some required labels are missing",
+			existing: map[string]string{"app": "test"},
+			required: map[string]string{"app": "test", "version": "1.0"},
+			want:     false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := equality.RequiredLabelsPresent(tc.existing, tc.required)
+			if got != tc.want {
+				t.Errorf("RequiredLabelsPresent() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

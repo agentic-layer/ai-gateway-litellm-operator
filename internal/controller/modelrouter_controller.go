@@ -136,11 +136,6 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	// Update successful status
-	modelRouter.Status.ConfigHash = configHash
-	now := metav1.Now()
-	modelRouter.Status.LastUpdated = &now
-
 	r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionTrue,
 		constants.ReasonConfigurationApplied, "ModelRouter configuration successfully applied")
 	r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionTrue,
@@ -186,9 +181,7 @@ func (r *ModelRouterReconciler) reconcileConfigMap(ctx context.Context, modelRou
 			Name:      fmt.Sprintf("%s-config", modelRouter.Name),
 			Namespace: modelRouter.Namespace,
 			Labels: map[string]string{
-				"app":                                  modelRouter.Name,
-				"type":                                 "litellm",
-				"gateway.agentic-layer.ai/config-hash": configHash,
+				"app": modelRouter.Name,
 			},
 		},
 		Data: map[string]string{
@@ -215,14 +208,20 @@ func (r *ModelRouterReconciler) reconcileConfigMap(ctx context.Context, modelRou
 	// Update if needed using equality utilities
 	needsUpdate := existing.Data["config.yaml"] != configData
 
-	if !equality.LabelsEqual(existing.Labels, configMap.Labels) {
+	if !equality.RequiredLabelsPresent(existing.Labels, configMap.Labels) {
 		needsUpdate = true
 	}
 
 	if needsUpdate {
 		log.Info("Updating ConfigMap", "name", configMap.Name)
 		existing.Data = configMap.Data
-		existing.Labels = configMap.Labels
+		// Only update our required labels, preserve others
+		if existing.Labels == nil {
+			existing.Labels = make(map[string]string)
+		}
+		for key, value := range configMap.Labels {
+			existing.Labels[key] = value
+		}
 		return r.Update(ctx, existing)
 	}
 
@@ -235,9 +234,7 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 
 	replicas := int32(1)
 	labels := map[string]string{
-		"app":                                  modelRouter.Name,
-		"type":                                 "litellm",
-		"gateway.agentic-layer.ai/config-hash": configHash,
+		"app": modelRouter.Name,
 	}
 
 	deployment := &appsv1.Deployment{
@@ -256,6 +253,9 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: labels,
+					Annotations: map[string]string{
+						"gateway.agentic-layer.ai/config-hash": configHash,
+					},
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
@@ -320,12 +320,16 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 	}
 
 	// Update if needed using equality utilities
-	needsUpdate := !equality.LabelsEqual(existing.Labels, deployment.Labels)
-
-	// Check labels for changes
+	needsUpdate := !equality.RequiredLabelsPresent(existing.Labels, deployment.Labels)
 
 	// Check template labels for changes
-	if !equality.LabelsEqual(existing.Spec.Template.Labels, deployment.Spec.Template.Labels) {
+	if !equality.RequiredLabelsPresent(existing.Spec.Template.Labels, deployment.Spec.Template.Labels) {
+		needsUpdate = true
+	}
+
+	// Check template annotations for config hash changes
+	if existing.Spec.Template.Annotations == nil ||
+		existing.Spec.Template.Annotations["gateway.agentic-layer.ai/config-hash"] != configHash {
 		needsUpdate = true
 	}
 
@@ -355,8 +359,30 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 
 	if needsUpdate {
 		log.Info("Updating Deployment", "name", deployment.Name)
-		existing.Labels = deployment.Labels
-		existing.Spec = deployment.Spec
+		// Only update our required labels, preserve others
+		if existing.Labels == nil {
+			existing.Labels = make(map[string]string)
+		}
+		for key, value := range deployment.Labels {
+			existing.Labels[key] = value
+		}
+		// Update template labels and annotations
+		if existing.Spec.Template.Labels == nil {
+			existing.Spec.Template.Labels = make(map[string]string)
+		}
+		for key, value := range deployment.Spec.Template.Labels {
+			existing.Spec.Template.Labels[key] = value
+		}
+		if existing.Spec.Template.Annotations == nil {
+			existing.Spec.Template.Annotations = make(map[string]string)
+		}
+		for key, value := range deployment.Spec.Template.Annotations {
+			existing.Spec.Template.Annotations[key] = value
+		}
+		// Update the rest of the spec
+		existing.Spec.Replicas = deployment.Spec.Replicas
+		existing.Spec.Selector = deployment.Spec.Selector
+		existing.Spec.Template.Spec = deployment.Spec.Template.Spec
 		return r.Update(ctx, existing)
 	}
 
@@ -368,8 +394,7 @@ func (r *ModelRouterReconciler) reconcileService(ctx context.Context, modelRoute
 	log := logf.FromContext(ctx)
 
 	labels := map[string]string{
-		"app":  modelRouter.Name,
-		"type": "litellm",
+		"app": modelRouter.Name,
 	}
 
 	service := &corev1.Service{
@@ -411,9 +436,7 @@ func (r *ModelRouterReconciler) reconcileService(ctx context.Context, modelRoute
 	}
 
 	// Update if needed using equality utilities
-	needsUpdate := !equality.LabelsEqual(existing.Labels, service.Labels)
-
-	// Check labels for changes
+	needsUpdate := !equality.RequiredLabelsPresent(existing.Labels, service.Labels)
 
 	// Check ports for changes (safe checking)
 	if len(existing.Spec.Ports) > 0 && len(service.Spec.Ports) > 0 &&
@@ -424,7 +447,13 @@ func (r *ModelRouterReconciler) reconcileService(ctx context.Context, modelRoute
 	if needsUpdate {
 		log.Info("Updating Service", "name", service.Name)
 		existing.Spec.Ports = service.Spec.Ports
-		existing.Labels = service.Labels
+		// Only update our required labels, preserve others
+		if existing.Labels == nil {
+			existing.Labels = make(map[string]string)
+		}
+		for key, value := range service.Labels {
+			existing.Labels[key] = value
+		}
 		return r.Update(ctx, existing)
 	}
 

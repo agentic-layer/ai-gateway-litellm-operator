@@ -115,14 +115,6 @@ spec:
                   - type
                   type: object
                 type: array
-              configHash:
-                description: ConfigHash represents the hash of the current configuration
-                type: string
-              lastUpdated:
-                description: LastUpdated is the timestamp when the ModelRouter was
-                  last updated
-                format: date-time
-                type: string
             type: object
         type: object
     served: true

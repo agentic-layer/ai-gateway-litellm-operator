@@ -37,6 +37,17 @@ func LabelsEqual(existing, desired map[string]string) bool {
 	return cmp.Equal(existing, desired)
 }
 
+// RequiredLabelsPresent checks if all required labels are present with correct values in existing labels.
+// This allows other operators to add additional labels without causing updates.
+func RequiredLabelsPresent(existing, required map[string]string) bool {
+	for key, value := range required {
+		if existingValue, exists := existing[key]; !exists || existingValue != value {
+			return false
+		}
+	}
+	return true
+}
+
 // EnvVarsEqual compares environment variable slices for equality, ignoring order.
 func EnvVarsEqual(existing, desired []corev1.EnvVar) bool {
 	sortFunc := func(a, b corev1.EnvVar) bool {

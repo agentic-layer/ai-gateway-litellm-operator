@@ -33,12 +33,6 @@ type AiModel struct {
 
 // ModelRouterStatus defines the observed state of ModelRouter.
 type ModelRouterStatus struct {
-	// ConfigHash represents the hash of the current configuration
-	ConfigHash string `json:"configHash,omitempty"`
-
-	// LastUpdated is the timestamp when the ModelRouter was last updated
-	LastUpdated *metav1.Time `json:"lastUpdated,omitempty"`
-
 	// +operator-sdk:csv:customresourcedefinitions:type=status
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
