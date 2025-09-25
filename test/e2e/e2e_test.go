@@ -225,7 +225,7 @@ metadata:
 spec:
   type: litellm
   aiModels:
-  - name: openai/gpt-3.5-turbo
+  - name: openai/gpt-4
   - name: gemini/gemini-1.5-pro
 `)
 			_, err := utils.Run(cmd)
