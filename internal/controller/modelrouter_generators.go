@@ -34,9 +34,6 @@ type ModelRouterConfigGenerator interface {
 	// Generate creates the configuration for the model router provider
 	Generate(ctx context.Context, modelRouter *gatewayv1alpha1.ModelRouter) (configData string, configHash string, err error)
 
-	// Validate checks if the model router configuration is valid for this provider
-	Validate(modelRouter *gatewayv1alpha1.ModelRouter) error
-
 	// GetDefaultConfig returns the default configuration template
 	GetDefaultConfig() map[string]interface{}
 }
@@ -89,34 +86,6 @@ func (g *LiteLLMGenerator) GetDefaultConfig() map[string]interface{} {
 		},
 		"model_list": []interface{}{},
 	}
-}
-
-// Validate checks LiteLLM-specific configuration
-func (g *LiteLLMGenerator) Validate(modelRouter *gatewayv1alpha1.ModelRouter) error {
-	if modelRouter.Spec.Type == "" {
-		return fmt.Errorf("modelRouter type is required")
-	}
-
-	if modelRouter.Spec.Type != "litellm" {
-		return fmt.Errorf("unsupported modelRouter type: %s, only 'litellm' is supported", modelRouter.Spec.Type)
-	}
-
-	if modelRouter.Spec.Port <= 0 {
-		return fmt.Errorf("modelRouter port must be positive, got: %d", modelRouter.Spec.Port)
-	}
-
-	if len(modelRouter.Spec.AiModels) == 0 {
-		return fmt.Errorf("no AI models specified in ModelRouter")
-	}
-
-	// Validate AI model names
-	for _, model := range modelRouter.Spec.AiModels {
-		if model.Name == "" {
-			return fmt.Errorf("AI model name cannot be empty")
-		}
-	}
-
-	return nil
 }
 
 // Generate creates LiteLLM YAML configuration

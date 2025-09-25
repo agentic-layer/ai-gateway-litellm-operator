@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/constants"
@@ -74,22 +75,7 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		modelRouter.Status.Conditions = []metav1.Condition{}
 	}
 
-	// Step 1: Validate ModelRouter configuration
-	if err := r.validateModelRouterConfig(&modelRouter); err != nil {
-		log.Error(err, "Invalid ModelRouter configuration")
-		r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionFalse,
-			constants.ReasonConfigurationInvalid, fmt.Sprintf("ModelRouter configuration validation failed: %v", err))
-		r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionFalse,
-			constants.ReasonConfigurationInvalid, "ModelRouter not ready due to invalid configuration")
-		if err := r.updateStatus(ctx, &modelRouter); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
-	}
-	r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionTrue,
-		constants.ReasonConfigurationValid, "ModelRouter configuration validation passed")
-
-	// Step 2: Generate configuration
+	// Step 1: Generate configuration
 	configData, configHash, err := r.generateModelRouterConfig(ctx, &modelRouter)
 	if err != nil {
 		log.Error(err, "Failed to generate configuration")
@@ -148,17 +134,6 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
-}
-
-// validateModelRouterConfig validates the ModelRouter configuration
-func (r *ModelRouterReconciler) validateModelRouterConfig(modelRouter *gatewayv1alpha1.ModelRouter) error {
-	// Create generator and use it to validate
-	generator, err := NewModelRouterGenerator(modelRouter.Spec.Type)
-	if err != nil {
-		return err
-	}
-
-	return generator.Validate(modelRouter)
 }
 
 // generateModelRouterConfig generates the configuration using the appropriate generator
@@ -281,7 +256,7 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 								"--config",
 								"/app/config/config.yaml",
 								"--port",
-								fmt.Sprintf("%d", modelRouter.Spec.Port),
+								strconv.Itoa(int(modelRouter.Spec.Port)),
 							},
 							Env: r.buildEnvironmentVariables(modelRouter),
 						},

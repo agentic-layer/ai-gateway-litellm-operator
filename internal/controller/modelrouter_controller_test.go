@@ -23,7 +23,6 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -100,110 +99,6 @@ var _ = Describe("ModelRouter Controller", func() {
 		})
 	})
 
-	Context("When reconciling a ModelRouter with invalid configuration", func() {
-		var modelRouter *gatewayv1alpha1.ModelRouter
-		var namespacedName types.NamespacedName
-
-		BeforeEach(func() {
-			namespacedName = types.NamespacedName{
-				Name:      resourceName + "-invalid",
-				Namespace: testNamespace,
-			}
-
-			By("Creating a ModelRouter with invalid configuration (no AI models)")
-			modelRouter = &gatewayv1alpha1.ModelRouter{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName + "-invalid",
-					Namespace: testNamespace,
-				},
-				Spec: gatewayv1alpha1.ModelRouterSpec{
-					Type:     validType, // Use valid type but invalid config
-					Port:     testPort,
-					AiModels: []gatewayv1alpha1.AiModel{}, // Empty models - this should be invalid
-				},
-			}
-			Expect(k8sClient.Create(ctx, modelRouter)).To(Succeed())
-		})
-
-		AfterEach(func() {
-			By("Cleaning up the invalid ModelRouter resource")
-			resource := &gatewayv1alpha1.ModelRouter{}
-			if err := k8sClient.Get(ctx, namespacedName, resource); err == nil {
-				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-			}
-		})
-
-		It("should handle invalid configuration and set appropriate conditions", func() {
-			By("Reconciling the invalid resource")
-			reconciler := &ModelRouterReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
-
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: namespacedName,
-			})
-
-			// Should handle the error gracefully (might requeue)
-			Expect(err).ToNot(HaveOccurred())
-
-			// Verify that resources were not created due to invalid config
-			checkResourcesNotCreated(ctx, namespacedName)
-			checkStatusConditions(ctx, namespacedName, false)
-		})
-	})
-
-	Context("When reconciling a ModelRouter with no models", func() {
-		var modelRouter *gatewayv1alpha1.ModelRouter
-		var namespacedName types.NamespacedName
-
-		BeforeEach(func() {
-			namespacedName = types.NamespacedName{
-				Name:      resourceName + "-nomodels",
-				Namespace: testNamespace,
-			}
-
-			By("Creating a ModelRouter with no AI models")
-			modelRouter = &gatewayv1alpha1.ModelRouter{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName + "-nomodels",
-					Namespace: testNamespace,
-				},
-				Spec: gatewayv1alpha1.ModelRouterSpec{
-					Type:     validType,
-					Port:     testPort,
-					AiModels: []gatewayv1alpha1.AiModel{}, // Empty models
-				},
-			}
-			Expect(k8sClient.Create(ctx, modelRouter)).To(Succeed())
-		})
-
-		AfterEach(func() {
-			By("Cleaning up the no-models ModelRouter resource")
-			resource := &gatewayv1alpha1.ModelRouter{}
-			if err := k8sClient.Get(ctx, namespacedName, resource); err == nil {
-				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-			}
-		})
-
-		It("should fail with ModelRouterDiscoveryFailed condition", func() {
-			By("Reconciling the resource with no models")
-			reconciler := &ModelRouterReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
-
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: namespacedName,
-			})
-
-			// Should handle the error gracefully
-			Expect(err).ToNot(HaveOccurred())
-
-			// Check that the appropriate condition is set - should fail at config generation
-			checkStatusConditions(ctx, namespacedName, false)
-		})
-	})
 })
 
 // checkConfigMapReconciled verifies that the ConfigMap was created with correct litellm configuration
@@ -339,28 +234,6 @@ func checkStatusConditions(ctx context.Context, namespacedName types.NamespacedN
 		}
 		Expect(hasFailureCondition).To(BeTrue())
 	}
-}
-
-// checkResourcesNotCreated verifies that resources were not created for invalid config
-func checkResourcesNotCreated(ctx context.Context, namespacedName types.NamespacedName) {
-	By("Verifying Deployment was not created")
-	deployment := &appsv1.Deployment{}
-	err := k8sClient.Get(ctx, namespacedName, deployment)
-	Expect(errors.IsNotFound(err)).To(BeTrue())
-
-	By("Verifying Service was not created")
-	service := &corev1.Service{}
-	err = k8sClient.Get(ctx, namespacedName, service)
-	Expect(errors.IsNotFound(err)).To(BeTrue())
-
-	By("Verifying ConfigMap was not created")
-	configMap := &corev1.ConfigMap{}
-	configMapName := namespacedName.Name + "-config"
-	err = k8sClient.Get(ctx, types.NamespacedName{
-		Name:      configMapName,
-		Namespace: namespacedName.Namespace,
-	}, configMap)
-	Expect(errors.IsNotFound(err)).To(BeTrue())
 }
 
 // findCondition finds a condition by type in the conditions slice
