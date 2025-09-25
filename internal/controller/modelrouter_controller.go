@@ -90,7 +90,7 @@ func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Step 3: Create/update ConfigMap with configuration
-	if err := r.reconcileConfigMap(ctx, &modelRouter, configData, configHash); err != nil {
+	if err := r.reconcileConfigMap(ctx, &modelRouter, configData); err != nil {
 		log.Error(err, "Failed to reconcile ConfigMap")
 		r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionFalse,
 			"ConfigMapFailed", fmt.Sprintf("Failed to create/update ConfigMap: %v", err))
@@ -148,7 +148,7 @@ func (r *ModelRouterReconciler) generateModelRouterConfig(ctx context.Context, m
 }
 
 // reconcileConfigMap creates or updates the ConfigMap containing LiteLLM configuration
-func (r *ModelRouterReconciler) reconcileConfigMap(ctx context.Context, modelRouter *gatewayv1alpha1.ModelRouter, configData, configHash string) error {
+func (r *ModelRouterReconciler) reconcileConfigMap(ctx context.Context, modelRouter *gatewayv1alpha1.ModelRouter, configData string) error {
 	log := logf.FromContext(ctx)
 
 	configMap := &corev1.ConfigMap{
