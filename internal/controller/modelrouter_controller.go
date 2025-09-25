@@ -261,7 +261,7 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 					Containers: []corev1.Container{
 						{
 							Name:  "litellm",
-							Image: "ghcr.io/berriai/litellm:main-latest",
+							Image: "ghcr.io/berriai/litellm:v1.77.2-stable",
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "http",
