@@ -1,6 +1,7 @@
 # AI Gateway LiteLLM Operator - Developer Guide
 
 @README.md
+@docs/modules/ROOT/partials/how-to-guides.adoc
 
 ## Overview
 

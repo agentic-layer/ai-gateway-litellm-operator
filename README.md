@@ -8,6 +8,7 @@ The operator is based on the [Operator SDK](https://sdk.operatorframework.io/) f
 
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
+- [Development](#development)
 - [Configuration](#configuration)
 - [End-to-End (E2E) Testing](#end-to-end-e2e-testing)
 - [Testing Tools and Configuration](#testing-tools-and-configuration)
@@ -29,27 +30,16 @@ Before working with this project, ensure you have the following tools installed 
 
 ## Getting Started
 
-Follow these steps to get the operator up and running on a local Kubernetes cluster.
+📖 **For detailed setup instructions**, see our [Getting Started guide](https://docs.agentic-layer.ai/ai-gateway-litellm/how-to-guides.html) in the documentation.
 
-### Prerequisites
-```shell
-# Create a local Kubernetes cluster using kind
+**Quick Start:**
+```bash
+# Create local cluster and install cert-manager
 kind create cluster
-```
-
-```bash
-# Install cert-manager for webhook support (update the version to the latest stable if needed)
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.yaml
-# Wait for cert-manager to be ready
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=cert-manager -n cert-manager --timeout=60s
-```
 
-### Installation
-```bash
-# Install the AI Gateway Litellm operator (update the version to the latest stable if needed)
+# Install the operator
 kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm/releases/download/v0.0.1/install.yaml
-# Wait for the operator to be ready
-kubectl wait --for=condition=Available --timeout=60s -n ai-gateway-litellm-system deployment/ai-gateway-litellm-controller-manager
 ```
 
 ## Development

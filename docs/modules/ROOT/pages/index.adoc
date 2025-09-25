@@ -1,0 +1,7 @@
+= AI Gateway Litellm
+
+The AI Gateway Litellm [Operator] is the implementation of an AI gateway (specifically, a model router) based on Litellm.
+
+An "AI Gateway" is any kind of proxy between an agent and an LLM.
+
+One kind of AI Gateway is a `ModelRouter`, which can take care of authenticating API requests to LLMs.
