@@ -59,6 +59,22 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+
+		By("waiting for webhook service to be ready")
+		Eventually(func(g Gomega) {
+			// Check that the webhook service exists
+			cmd := exec.Command("kubectl", "get", "service",
+				"ai-gateway-litellm-webhook-service", "-n", namespace)
+			_, err := utils.Run(cmd)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			// Check that the webhook service has endpoints (meaning pods are ready)
+			cmd = exec.Command("kubectl", "get", "endpoints", "ai-gateway-litellm-webhook-service",
+				"-n", namespace, "-o", "jsonpath={.subsets[*].addresses[*].ip}")
+			output, err := utils.Run(cmd)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(output).NotTo(BeEmpty(), "Webhook service should have endpoints")
+		}, 2*time.Minute, 5*time.Second).Should(Succeed(), "Webhook service should be ready")
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
