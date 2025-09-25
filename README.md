@@ -70,13 +70,6 @@ make deploy
 
 ## Configuration
 
-### Environment Variables
-
-The operator can be configured using the following environment variables:
-
-- `ENABLE_WEBHOOKS` - Set to `false` to disable admission webhooks (default: `true`)
-- `METRICS_BIND_ADDRESS` - Address for metrics server (default: `:8443`)
-- `HEALTH_PROBE_BIND_ADDRESS` - Address for health probes (default: `:8081`)
 
 ### Custom Resource Configuration
 
@@ -120,7 +113,6 @@ The E2E test suite includes:
 - Operator deployment verification
 - CRD installation testing
 - Webhook functionality testing
-- Metrics endpoint validation
 - Certificate management verification
 
 ### Manual E2E Test Setup
