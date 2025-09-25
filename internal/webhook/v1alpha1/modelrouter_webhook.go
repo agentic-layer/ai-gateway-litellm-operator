@@ -124,11 +124,27 @@ func (v *ModelRouterCustomValidator) ValidateDelete(ctx context.Context, obj run
 // validateModelRouterSpec contains the core validation logic for the ModelRouter spec.
 // It's called by both ValidateCreate and ValidateUpdate.
 func (v *ModelRouterCustomValidator) validateModelRouterSpec(modelRouter *gatewayv1alpha1.ModelRouter) (admission.Warnings, error) {
+	// Validate type is specified (allow any non-empty string - other operators may implement different types)
 	if modelRouter.Spec.Type == "" {
 		return nil, errors.New("model router must specify a type")
 	}
 
+	// Validate port is positive
+	if modelRouter.Spec.Port <= 0 {
+		return nil, fmt.Errorf("modelRouter port must be positive, got: %d", modelRouter.Spec.Port)
+	}
+
+	// Validate at least one AI model is specified
+	if len(modelRouter.Spec.AiModels) == 0 {
+		return nil, errors.New("no AI models specified in ModelRouter")
+	}
+
+	// Validate AI model names
 	for _, model := range modelRouter.Spec.AiModels {
+		if model.Name == "" {
+			return nil, errors.New("AI model name cannot be empty")
+		}
+
 		provider, modelName, found := strings.Cut(model.Name, providerModelSeparator)
 
 		// Handle malformed names like "gpt-4" (no separator) or "/gpt-4" (empty provider).
