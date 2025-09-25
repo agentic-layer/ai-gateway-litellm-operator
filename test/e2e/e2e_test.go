@@ -225,8 +225,8 @@ metadata:
 spec:
   type: litellm
   aiModels:
-  - name: openai
-  - name: gemini
+  - name: openai/gpt-3.5-turbo
+  - name: gemini/gemini-1.5-pro
 `)
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create ModelRouter")
