@@ -12,7 +12,7 @@ webhooks:
       namespace: system
       path: /mutate-gateway-agentic-layer-ai-v1alpha1-modelrouter
   failurePolicy: Fail
-  name: mmodelrouter-v1alpha1.kb.io
+  name: modelrouter-v1alpha1.kb.io
   rules:
   - apiGroups:
     - gateway.agentic-layer.ai

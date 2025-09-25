@@ -43,7 +43,7 @@ func SetupModelRouterWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// +kubebuilder:webhook:path=/mutate-gateway-agentic-layer-ai-v1alpha1-modelrouter,mutating=true,failurePolicy=fail,sideEffects=None,groups=gateway.agentic-layer.ai,resources=modelrouters,verbs=create;update,versions=v1alpha1,name=mmodelrouter-v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-gateway-agentic-layer-ai-v1alpha1-modelrouter,mutating=true,failurePolicy=fail,sideEffects=None,groups=gateway.agentic-layer.ai,resources=modelrouters,verbs=create;update,versions=v1alpha1,name=modelrouter-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // ModelRouterCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind ModelRouter when those are created or updated.
