@@ -1,20 +1,10 @@
-////
-Reference
-Update reference material when you add or change code, configuration, or data schemas. This is the technical source of truth.
+= ModelRouter CRD Reference
 
-When to write one: As you modify a function, class, API endpoint, or A2A message schema. This is often done directly in the code via docstrings that are auto-generated into docs.
-
-Think: A dictionary or encyclopedia entry for your code.
-////
-:repo-name: agentic-layer/ai-gateway-litellm
-
-== ModelRouter CRD Reference
-
-=== Overview
+== Overview
 
 The ModelRouter custom resource defines an AI model gateway that routes requests to multiple LLM providers through a unified interface.
 
-=== Example
+== Example
 
 [source,yaml]
 ----
@@ -28,12 +18,12 @@ spec:
   port: 4000
   aiModels:
     - name: openai/gpt-3.5-turbo
-    - name: gemini/gemini-1.5-pro
+    - name: gemini/gemini-2.5-flash
 ----
 
-=== Required Specification Fields
+== Required Specification Fields
 
-==== spec.type
+=== spec.type
 **Type**: `string` +
 
 Specifies the type of model router implementation. Currently supports:
@@ -41,7 +31,7 @@ Specifies the type of model router implementation. Currently supports:
 - `litellm` - LiteLLM proxy implementation
 
 
-==== spec.aiModels
+=== spec.aiModels
 **Type**: `[]AiModel` +
 
 List of AI models to be made available through the router. Each model must specify a name in the format `provider/model-name`.

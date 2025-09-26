@@ -1,17 +1,6 @@
-////
-How-To Guides
+= Getting Started
 
-Add a how-to guide when you're documenting the steps to solve a specific, common problem. These are short, focused checklists for developers who already know the basics.
-
-When to write one: Answering a specific question like "How do I add a custom tool?" or "How do I configure retries?".
-
-Think: A recipe to solve one problem.
-////
-:repo-name: agentic-layer/ai-gateway-litellm
-
-== Getting Started
-
-=== Prerequisites
+== Prerequisites
 
 Before working with this project, ensure you have the following tools installed on your system:
 
@@ -21,7 +10,7 @@ Before working with this project, ensure you have the following tools installed 
 * **kind**: For running Kubernetes locally in Docker
 * **make**: The build automation tool
 
-=== Setup Local Environment
+== Setup Local Environment
 
 [source,shell]
 ----
@@ -37,7 +26,7 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=cert-manager -n cert-manager --timeout=60s
 ----
 
-=== Installation
+== Installation
 
 [source,bash]
 ----

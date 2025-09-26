@@ -1,5 +1,5 @@
-:repo-name: agentic-layer/ai-gateway-litellm
+.How-To Guides
+* xref:how-to-guide.adoc[]
 
-* {repo-name}
-** xref:how-to-guides.adoc[How-to Guides]
-** xref:reference.adoc[Reference]
+.Reference
+* xref:reference.adoc[]
