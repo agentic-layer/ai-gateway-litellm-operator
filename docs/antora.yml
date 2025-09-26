@@ -1,5 +1,5 @@
-name: ai-gateway-litellm
-title: AI Gateway Litellm (Operator)
+name: ai-gateway-litellm-operator
+title: AI Gateway LiteLLM Operator
 version: ~
 nav:
 - modules/ROOT/nav.adoc

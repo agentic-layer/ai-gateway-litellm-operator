@@ -1,0 +1,93 @@
+= Install the AI Gateway Operator for LiteLLM
+
+This guide walks you through installing the LiteLLM AI Gateway Operator on your Kubernetes cluster.
+
+== Dependencies
+
+The LiteLLM AI Gateway requires the following dependencies:
+
+* **Kubernetes**: A running Kubernetes cluster
+* **cert-manager**: For managing TLS certificates for webhooks
+
+== Installation
+
+=== Install with Kubernetes YAML
+
+==== Step 1: Install cert-manager
+
+The LiteLLM AI Gateway requires cert-manager for webhook support:
+
+[source,bash]
+----
+# Install cert-manager
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.yaml
+
+# Wait for cert-manager to be ready
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=cert-manager -n cert-manager --timeout=60s
+----
+
+==== Step 2: Install the LiteLLM AI Gateway
+
+[source,bash]
+----
+# Install the operator
+kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm/releases/download/v0.0.6/install.yaml
+# Wait for the operator to be ready
+kubectl wait --for=condition=Available --timeout=60s -n ai-gateway-litellm-system deployment/ai-gateway-litellm-controller-manager
+----
+
+Find the latest version at https://github.com/agentic-layer/ai-gateway-litellm-operator/releases
+
+=== Install with Flux
+
+If you're using Flux for GitOps, you can install the operator using an OCI repository:
+
+[source,yaml]
+----
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: ai-gateway-litellm-operator
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: oci://ghcr.io/agentic-layer/manifests/ai-gateway-litellm-operator
+  ref:
+    semver: ">= 0, < 1"
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: ai-gateway-litellm-operator
+  namespace: flux-system
+spec:
+  sourceRef:
+    kind: OCIRepository
+    name: ai-gateway-litellm-operator
+  interval: 10m
+  path: ./default
+  prune: true
+  wait: true
+  dependsOn:
+    # Ensure cert-manager is installed first (if you install it with Flux as well)
+    - name: cert-manager
+----
+
+== Verify the installation
+
+[source,bash]
+----
+# Check that the operator is running
+kubectl get pods -n ai-gateway-litellm-operator-system
+
+# Check that the CRDs are installed
+kubectl get crd aigateway.gateway.agentic-layer.ai
+----
+
+You should see the operator pod running and the CRD available.
+
+== Next Steps
+
+Now that you have the LiteLLM AI Gateway installed, you can:
+
+1. xref:gateway:how-to-guide.adoc[Create your first AI gateway] - Learn how to deploy AI gateways

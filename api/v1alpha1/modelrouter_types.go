@@ -22,12 +22,22 @@ import (
 
 // ModelRouterSpec defines the desired state of ModelRouter.
 type ModelRouterSpec struct {
-	Type     string    `json:"type"` // NOTE: In the future, this will be a ModelRouterClass reference (similar to the AgentGatewayClass) instead.
-	Port     int32     `json:"port,omitempty"`
+	// NOTE: In the future, this will be a ModelRouterClass reference (similar to the AgentGatewayClass) instead.
+	Type string `json:"type"`
+
+	// Port on which the model router will be exposed.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +kubebuilder:default=4000
+	Port int32 `json:"port,omitempty"`
+
+	// List of AI models to be made available through the router.
 	AiModels []AiModel `json:"aiModels,omitempty"`
 }
 
 type AiModel struct {
+	// Each model must specify a name in the format `provider/model-name`.
+	// See https://docs.litellm.ai/docs/providers for a list of supported providers.
 	Name string `json:"name"`
 }
 

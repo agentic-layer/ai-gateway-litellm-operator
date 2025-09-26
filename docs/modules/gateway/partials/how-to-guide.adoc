@@ -1,0 +1,75 @@
+= Create a LiteLLM AI Gateway
+
+This guide walks you through deploying a LiteLLM instance using the ModelRouter custom resource.
+
+IMPORTANT: Before following this guide, make sure you have the LiteLLM AI Gateway Operator installed. See xref:operator:how-to-guide.adoc[Install the AI Gateway LiteLLM Operator] for installation instructions.
+
+== Create API Key Secret
+
+First, create a secret containing credentials for the LLM providers you plan to use:
+
+[source,bash]
+----
+kubectl create secret generic api-key-secrets \
+  --namespace=ai-gateway \
+  --from-literal=OPENAI_API_KEY=$OPENAI_API_KEY \
+  --from-literal=GEMINI_API_KEY=$GEMINI_API_KEY \
+  --from-literal=ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+----
+
+NOTE: The secret name must match the value configured in the operator. The default expected name is `api-key-secrets`. API keys that are not provided will not cause deployment failures - the corresponding models just won't be available.
+
+== Create a ModelRouter Resource
+
+. Create a ModelRouter resource file:
++
+[source,yaml]
+----
+apiVersion: gateway.agentic-layer.ai/v1alpha1
+kind: ModelRouter
+metadata:
+  name: ai-gateway-litellm
+  namespace: ai-gateway
+spec:
+  type: litellm
+  aiModels:
+    - name: openai/gpt-3.5-turbo
+    - name: gemini/gemini-1.5-pro
+----
+
+. Apply the configuration:
++
+[source,bash]
+----
+kubectl apply -f my-modelrouter.yaml
+----
+
+== Verify the Deployment
+
+. Check the ModelRouter status:
++
+[source,bash]
+----
+kubectl get modelrouters ai-gateway-litellm -o yaml
+----
+
+. Verify the created resources:
++
+[source,bash]
+----
+# Check the deployment created by the operator
+kubectl get deployments -l app=ai-gateway-litellm
+
+# Check the service
+kubectl get services -l app=ai-gateway-litellm
+
+# Check the configmap with LiteLLM configuration
+kubectl get configmaps ai-gateway-litellm-config
+----
+
+. Check the pod logs to ensure LiteLLM started successfully:
++
+[source,bash]
+----
+kubectl logs -l app=ai-gateway-litellm -c litellm
+----

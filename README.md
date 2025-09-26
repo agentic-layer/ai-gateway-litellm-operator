@@ -1,6 +1,6 @@
-# AI Gateway Litellm
+# AI Gateway LiteLLM
 
-"AI Gateway Litellm" is a Kubernetes operator that creates and manages [Litellm](https://www.litellm.ai/) deployments. This operator serves as one possible implementation of an "AI Gateway" operator. It defines a generic `ModelRouter` custom resource.  
+"AI Gateway LiteLLM" is a Kubernetes operator that creates and manages [LiteLLM](https://www.litellm.ai/) deployments. This operator serves as one possible implementation of an "AI Gateway" operator. It defines a generic `ModelRouter` custom resource.  
 
 The operator is based on the [Operator SDK](https://sdk.operatorframework.io/) framework. 
 
@@ -63,7 +63,7 @@ make deploy
 
 ### Custom Resource Configuration
 
-To deploy a Litellm ModelRouter instance, you define a `ModelRouter` resource. Here is an example configuration:
+To deploy a LiteLLM ModelRouter instance, you define a `ModelRouter` resource. Here is an example configuration:
 
 ```yaml
 apiVersion: gateway.agentic-layer.ai/v1alpha1
