@@ -9,10 +9,11 @@ It can handle tasks such as routing requests to different models, managing authe
 
 Step-by-step guides to get you up and running:
 
-* xref:how-to-guide.adoc[] - Complete installation guide with prerequisites, setup steps, and verification
+* xref:operator:how-to-guide.adoc[]
+* xref:gateway:how-to-guide.adoc[]
 
 == Reference
 
 Detailed reference information for all components:
 
-* xref:reference.adoc[] - Complete API reference for Agent Gateway resources
+* xref:operator:reference.adoc[]
