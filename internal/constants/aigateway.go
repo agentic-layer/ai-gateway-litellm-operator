@@ -16,7 +16,7 @@ limitations under the License.
 
 package constants
 
-// ModelRouter provider types
+// AiGateway provider types
 const (
 	// TypeLitellm is the LiteLLM provider type
 	TypeLitellm = "litellm"
@@ -36,30 +36,18 @@ const (
 
 // Status condition types
 const (
-	// ModelRouterConfigured indicates if the ModelRouter configuration is valid
-	ModelRouterConfigured = "ModelRouterConfigured"
+	// AiGatewayConfigured indicates if the AiGateway configuration is valid
+	AiGatewayConfigured = "AiGatewayConfigured"
 
-	// ModelRouterReady indicates if the ModelRouter is ready to serve traffic
-	ModelRouterReady = "ModelRouterReady"
-
-	// ModelRouterDiscoveryFailed indicates discovery failures
-	ModelRouterDiscoveryFailed = "ModelRouterDiscoveryFailed"
+	// AiGatewayReady indicates if the AiGateway is ready to serve traffic
+	AiGatewayReady = "AiGatewayReady"
 )
 
 // Condition reasons
 const (
-	// ReasonConfigurationValid indicates valid configuration
-	ReasonConfigurationValid = "ConfigurationValid"
-
-	// ReasonConfigurationInvalid indicates invalid configuration
-	ReasonConfigurationInvalid = "ConfigurationInvalid"
-
 	// ReasonConfigurationApplied indicates successful configuration application
 	ReasonConfigurationApplied = "ConfigurationApplied"
 
-	// ReasonModelRouterReady indicates ModelRouter is ready
-	ReasonModelRouterReady = "ModelRouterReady"
+	// ReasonAiGatewayReady indicates AiGateway is ready
+	ReasonAiGatewayReady = "AiGatewayReady"
 )
-
-// ModelRouterKind is the kind name for ModelRouter resources
-const ModelRouterKind = "ModelRouter"

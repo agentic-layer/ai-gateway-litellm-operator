@@ -3,6 +3,7 @@ module github.com/agentic-layer/ai-gateway-litellm
 go 1.24.0
 
 require (
+	github.com/agentic-layer/ai-gateway-operator v0.0.0-20251008103035-93d5c5683ce2
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
 	github.com/stretchr/testify v1.10.0

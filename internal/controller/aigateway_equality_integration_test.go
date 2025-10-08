@@ -19,9 +19,8 @@ package controller
 import (
 	"testing"
 
-	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
-	"github.com/agentic-layer/ai-gateway-litellm/internal/constants"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/equality"
+	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -31,15 +30,15 @@ func TestEqualityIntegrationWithController(t *testing.T) {
 	t.Run("should detect when AI models change order but remain semantically identical", func(t *testing.T) {
 		// Define AI models in different orders
 		originalModels := []gatewayv1alpha1.AiModel{
-			{Name: "openai/gpt-4"},
-			{Name: "gemini/gemini-1.5-pro"},
-			{Name: "anthropic/claude-3-opus"},
+			{Name: "gpt-4", Provider: "openai"},
+			{Name: "gemini-1.5-pro", Provider: "gemini"},
+			{Name: "claude-3-opus", Provider: "anthropic"},
 		}
 
 		reorderedModels := []gatewayv1alpha1.AiModel{
-			{Name: "anthropic/claude-3-opus"},
-			{Name: "openai/gpt-4"},
-			{Name: "gemini/gemini-1.5-pro"},
+			{Name: "claude-3-opus", Provider: "anthropic"},
+			{Name: "gpt-4", Provider: "openai"},
+			{Name: "gemini-1.5-pro", Provider: "gemini"},
 		}
 
 		// These should be considered equal despite different order
@@ -47,28 +46,26 @@ func TestEqualityIntegrationWithController(t *testing.T) {
 			t.Error("Expected reordered AI models to be equal, but they were not")
 		}
 
-		// Create ModelRouter specs with these models
-		originalSpec := &gatewayv1alpha1.ModelRouterSpec{
-			Type:     constants.TypeLitellm,
+		// Create AiGateway specs with these models
+		originalSpec := &gatewayv1alpha1.AiGatewaySpec{
 			Port:     4000,
 			AiModels: originalModels,
 		}
 
-		reorderedSpec := &gatewayv1alpha1.ModelRouterSpec{
-			Type:     constants.TypeLitellm,
+		reorderedSpec := &gatewayv1alpha1.AiGatewaySpec{
 			Port:     4000,
 			AiModels: reorderedModels,
 		}
 
 		// Controller should recognize these as semantically identical
 		if !equality.AiModelsEqual(originalSpec.AiModels, reorderedSpec.AiModels) {
-			t.Error("Expected ModelRouter specs with reordered models to be equal")
+			t.Error("Expected AiGateway specs with reordered models to be equal")
 		}
 	})
 
 	t.Run("should detect when labels change semantically", func(t *testing.T) {
 		originalLabels := map[string]string{
-			"app":                                  "test-router",
+			"app":                                  "test-gateway",
 			"type":                                 "litellm",
 			"gateway.agentic-layer.ai/config-hash": "abc123",
 		}
@@ -76,13 +73,13 @@ func TestEqualityIntegrationWithController(t *testing.T) {
 		// Same labels in map (order doesn't matter for maps)
 		identicalLabels := map[string]string{
 			"gateway.agentic-layer.ai/config-hash": "abc123",
-			"app":                                  "test-router",
+			"app":                                  "test-gateway",
 			"type":                                 "litellm",
 		}
 
 		// Different config hash
 		changedLabels := map[string]string{
-			"app":                                  "test-router",
+			"app":                                  "test-gateway",
 			"type":                                 "litellm",
 			"gateway.agentic-layer.ai/config-hash": "def456",
 		}
@@ -184,55 +181,52 @@ func TestEqualityIntegrationWithController(t *testing.T) {
 	})
 }
 
-// TestEqualityWithModelRouterController tests that the equality utilities work correctly
+// TestEqualityWithAiGatewayController tests that the equality utilities work correctly
 // with the actual controller reconciliation patterns
-func TestEqualityWithModelRouterController(t *testing.T) {
+func TestEqualityWithAiGatewayController(t *testing.T) {
 	t.Run("controller update decision logic uses equality utilities", func(t *testing.T) {
 		// Create a scenario that simulates what the controller does
 
-		// Original ModelRouter configuration
-		originalModelRouter := &gatewayv1alpha1.ModelRouter{
-			Spec: gatewayv1alpha1.ModelRouterSpec{
-				Type: "litellm",
+		// Original AiGateway configuration
+		originalAiGateway := &gatewayv1alpha1.AiGateway{
+			Spec: gatewayv1alpha1.AiGatewaySpec{
 				Port: 4000,
 				AiModels: []gatewayv1alpha1.AiModel{
-					{Name: "openai/gpt-4"},
-					{Name: "gemini/gemini-1.5-pro"},
+					{Name: "gpt-4", Provider: "openai"},
+					{Name: "gemini-1.5-pro", Provider: "gemini"},
 				},
 			},
 		}
 
 		// Simulate reordered models (should not trigger update)
-		reorderedModelRouter := &gatewayv1alpha1.ModelRouter{
-			Spec: gatewayv1alpha1.ModelRouterSpec{
-				Type: "litellm",
+		reorderedAiGateway := &gatewayv1alpha1.AiGateway{
+			Spec: gatewayv1alpha1.AiGatewaySpec{
 				Port: 4000,
 				AiModels: []gatewayv1alpha1.AiModel{
-					{Name: "gemini/gemini-1.5-pro"},
-					{Name: "openai/gpt-4"},
+					{Name: "gemini-1.5-pro", Provider: "gemini"},
+					{Name: "gpt-4", Provider: "openai"},
 				},
 			},
 		}
 
 		// Should recognize these as equal (no update needed)
-		if !equality.AiModelsEqual(originalModelRouter.Spec.AiModels, reorderedModelRouter.Spec.AiModels) {
+		if !equality.AiModelsEqual(originalAiGateway.Spec.AiModels, reorderedAiGateway.Spec.AiModels) {
 			t.Error("Controller should recognize reordered models as equal")
 		}
 
 		// Simulate actual model change (should trigger update)
-		changedModelRouter := &gatewayv1alpha1.ModelRouter{
-			Spec: gatewayv1alpha1.ModelRouterSpec{
-				Type: "litellm",
+		changedAiGateway := &gatewayv1alpha1.AiGateway{
+			Spec: gatewayv1alpha1.AiGatewaySpec{
 				Port: 4000,
 				AiModels: []gatewayv1alpha1.AiModel{
-					{Name: "openai/gpt-4"},
-					{Name: "anthropic/claude-3-opus"}, // Different model
+					{Name: "gpt-4", Provider: "openai"},
+					{Name: "claude-3-opus", Provider: "anthropic"}, // Different model
 				},
 			},
 		}
 
 		// Should recognize these as different (update needed)
-		if equality.AiModelsEqual(originalModelRouter.Spec.AiModels, changedModelRouter.Spec.AiModels) {
+		if equality.AiModelsEqual(originalAiGateway.Spec.AiModels, changedAiGateway.Spec.AiModels) {
 			t.Error("Controller should recognize different models as not equal")
 		}
 	})

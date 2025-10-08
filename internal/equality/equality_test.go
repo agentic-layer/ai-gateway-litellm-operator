@@ -19,8 +19,8 @@ package equality_test
 import (
 	"testing"
 
-	"github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/equality"
+	"github.com/agentic-layer/ai-gateway-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -33,19 +33,19 @@ func TestAiModelsEqual(t *testing.T) {
 	}{
 		{
 			name: "should be equal for identical slices",
-			a:    []v1alpha1.AiModel{{Name: "openai/gpt-4"}},
-			b:    []v1alpha1.AiModel{{Name: "openai/gpt-4"}},
+			a:    []v1alpha1.AiModel{{Name: "gpt-4", Provider: "openai"}},
+			b:    []v1alpha1.AiModel{{Name: "gpt-4", Provider: "openai"}},
 			want: true,
 		},
 		{
 			name: "should be equal for slices in different order",
 			a: []v1alpha1.AiModel{
-				{Name: "openai/gpt-4"},
-				{Name: "gemini/gemini-1.5-pro"},
+				{Name: "gpt-4", Provider: "openai"},
+				{Name: "gemini-1.5-pro", Provider: "gemini"},
 			},
 			b: []v1alpha1.AiModel{
-				{Name: "gemini/gemini-1.5-pro"},
-				{Name: "openai/gpt-4"},
+				{Name: "gemini-1.5-pro", Provider: "gemini"},
+				{Name: "gpt-4", Provider: "openai"},
 			},
 			want: true,
 		},
@@ -63,14 +63,20 @@ func TestAiModelsEqual(t *testing.T) {
 		},
 		{
 			name: "should not be equal for different lengths",
-			a:    []v1alpha1.AiModel{{Name: "openai/gpt-4"}},
-			b:    []v1alpha1.AiModel{{Name: "openai/gpt-4"}, {Name: "gemini/gemini-1.5-pro"}},
+			a:    []v1alpha1.AiModel{{Name: "gpt-4", Provider: "openai"}},
+			b:    []v1alpha1.AiModel{{Name: "gpt-4", Provider: "openai"}, {Name: "gemini-1.5-pro", Provider: "gemini"}},
 			want: false,
 		},
 		{
 			name: "should not be equal for different names",
-			a:    []v1alpha1.AiModel{{Name: "openai/gpt-4"}},
-			b:    []v1alpha1.AiModel{{Name: "anthropic/claude-3-opus"}},
+			a:    []v1alpha1.AiModel{{Name: "gpt-4", Provider: "openai"}},
+			b:    []v1alpha1.AiModel{{Name: "claude-3-opus", Provider: "anthropic"}},
+			want: false,
+		},
+		{
+			name: "should not be equal for different providers",
+			a:    []v1alpha1.AiModel{{Name: "gpt-4", Provider: "openai"}},
+			b:    []v1alpha1.AiModel{{Name: "gpt-4", Provider: "azure"}},
 			want: false,
 		},
 		{

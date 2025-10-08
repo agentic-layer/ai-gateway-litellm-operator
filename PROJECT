@@ -9,19 +9,5 @@ plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
 projectName: ai-gateway-litellm
-repo: github.com/agentic-layer/ai-gateway-litellm
-resources:
-- api:
-    crdVersion: v1
-    namespaced: true
-  controller: true
-  domain: agentic-layer.ai
-  group: gateway
-  kind: ModelRouter
-  path: github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1
-  version: v1alpha1
-  webhooks:
-    defaulting: true
-    validation: true
-    webhookVersion: v1
+repo: github.com/agentic-layer/ai-gateway-litellm-operator
 version: "3"

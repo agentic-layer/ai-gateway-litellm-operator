@@ -21,12 +21,15 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
 
-	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
+	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-operator/api/v1alpha1"
 )
 
 // AiModelsEqual compares AI model slices for equality, ignoring order.
 func AiModelsEqual(existing, desired []gatewayv1alpha1.AiModel) bool {
 	sortFunc := func(a, b gatewayv1alpha1.AiModel) bool {
+		if a.Provider != b.Provider {
+			return a.Provider < b.Provider
+		}
 		return a.Name < b.Name
 	}
 	return cmp.Equal(existing, desired, cmpopts.SortSlices(sortFunc))

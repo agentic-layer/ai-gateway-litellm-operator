@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: modelrouters.gateway.agentic-layer.ai
+  name: aigateways.agentic-layer.ai
 spec:
-  group: gateway.agentic-layer.ai
+  group: agentic-layer.ai
   names:
-    kind: ModelRouter
-    listKind: ModelRouterList
-    plural: modelrouters
-    singular: modelrouter
+    kind: AiGateway
+    listKind: AiGatewayList
+    plural: aigateways
+    singular: aigateway
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ModelRouter is the Schema for the modelrouters API.
+        description: AiGateway is the Schema for the AI gateways API.
         properties:
           apiVersion:
             description: |-
@@ -37,27 +37,40 @@ spec:
           metadata:
             type: object
           spec:
-            description: ModelRouterSpec defines the desired state of ModelRouter.
+            description: AiGatewaySpec defines the desired state of AiGateway.
             properties:
+              aiGatewayClassName:
+                description: |-
+                  AiGatewayClassName specifies which AiGatewayClass to use for this AI gateway instance.
+                  This is only needed if multiple AI gateway classes are defined in the cluster.
+                type: string
               aiModels:
+                description: List of AI models to be made available through the gateway.
                 items:
                   properties:
                     name:
+                      description: Name is the identifier for the AI model (e.g.,
+                        "gpt-4", "claude-3-opus")
+                      type: string
+                    provider:
+                      description: Provider specifies the AI provider (e.g., "openai",
+                        "anthropic", "azure")
                       type: string
                   required:
                   - name
+                  - provider
                   type: object
                 type: array
               port:
+                default: 4000
+                description: Port on which the AI gateway will be exposed.
                 format: int32
+                maximum: 65535
+                minimum: 1
                 type: integer
-              type:
-                type: string
-            required:
-            - type
             type: object
           status:
-            description: ModelRouterStatus defines the observed state of ModelRouter.
+            description: AiGatewayStatus defines the observed state of AiGateway.
             properties:
               conditions:
                 items:
