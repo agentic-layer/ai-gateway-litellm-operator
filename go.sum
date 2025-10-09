@@ -4,6 +4,8 @@ github.com/agentic-layer/ai-gateway-operator v0.0.0-20251007130443-c4b412a15b03 
 github.com/agentic-layer/ai-gateway-operator v0.0.0-20251007130443-c4b412a15b03/go.mod h1:iwdLqtWcKJ7Wex6fzkKmH4yi6KIrrbxB5GmAR8TS6Cc=
 github.com/agentic-layer/ai-gateway-operator v0.0.0-20251008103035-93d5c5683ce2 h1:ZxuHbv3tgabqEj4fE1NMHc84+REbINyx7WBPIr9PBdM=
 github.com/agentic-layer/ai-gateway-operator v0.0.0-20251008103035-93d5c5683ce2/go.mod h1:iwdLqtWcKJ7Wex6fzkKmH4yi6KIrrbxB5GmAR8TS6Cc=
+github.com/agentic-layer/ai-gateway-operator v0.1.0 h1:Z8qbH8+QnDQ7ZJOhSsORKQdvNyyZybYdo1HUDlcsKDQ=
+github.com/agentic-layer/ai-gateway-operator v0.1.0/go.mod h1:iwdLqtWcKJ7Wex6fzkKmH4yi6KIrrbxB5GmAR8TS6Cc=
 github.com/antlr4-go/antlr/v4 v4.13.0 h1:lxCg3LAv+EUK6t1i0y1V6/SLeUi0eKEKdhQAlS8TVTI=
 github.com/antlr4-go/antlr/v4 v4.13.0/go.mod h1:pfChB/xh/Unjila75QW7+VU4TSnWnnk9UTnmpPaOR2g=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
