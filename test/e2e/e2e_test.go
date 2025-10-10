@@ -17,7 +17,6 @@ limitations under the License.
 package e2e
 
 import (
-	"bytes"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -34,6 +33,8 @@ const namespace = "ai-gateway-litellm-system"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
+	const aiGatewayInstallUrl = "https://github.com/agentic-layer/ai-gateway-operator/releases/" +
+		"download/v0.1.0/install.yaml"
 
 	// Before running the tests, set up the environment by creating the namespace,
 	// enforce the restricted security policy to the namespace, installing CRDs,
@@ -50,38 +51,30 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
 
-		By("installing CRDs")
-		cmd = exec.Command("make", "install")
+		By("deploying the ai gateway operator")
+		cmd = exec.Command("kubectl", "apply", "-f", aiGatewayInstallUrl)
 		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
+		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the agent runtime")
+
+		By("waiting for ai-gateway-operator-controller-manager to be ready")
+		Eventually(func() error {
+			cmd := exec.Command("kubectl", "get", "deployment",
+				"ai-gateway-operator-controller-manager", "-n", "ai-gateway-operator-system",
+				"-o", "jsonpath={.status.readyReplicas}")
+			output, err := utils.Run(cmd)
+			if err != nil {
+				return err
+			}
+			if output == "" || output == "0" {
+				return fmt.Errorf("ai-gateway-operator deployment not ready")
+			}
+			return nil
+		}, 2*time.Minute, 10*time.Second).Should(Succeed(), "ai-gateway-operator deployment should be ready")
 
 		By("deploying the controller-manager")
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
-
-		By("waiting for webhook service to be ready")
-		Eventually(func(g Gomega) {
-			// Check that the webhook service exists
-			cmd := exec.Command("kubectl", "get", "service",
-				"ai-gateway-litellm-webhook-service", "-n", namespace)
-			_, err := utils.Run(cmd)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			// Check that the controller-manager pod is ready (not just running)
-			cmd = exec.Command("kubectl", "get", "pods", "-l", "control-plane=controller-manager",
-				"-n", namespace, "-o", "jsonpath={.items[0].status.conditions[?(@.type=='Ready')].status}")
-			output, err := utils.Run(cmd)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(output).To(Equal("True"), "Controller pod should be ready")
-
-			// Check that the webhook service has endpoints (meaning pods are ready)
-			cmd = exec.Command("kubectl", "get", "endpoints", "ai-gateway-litellm-webhook-service",
-				"-n", namespace, "-o", "jsonpath={.subsets[*].addresses[*].ip}")
-			output, err = utils.Run(cmd)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(output).NotTo(BeEmpty(), "Webhook service should have endpoints")
-		}, 2*time.Minute, 5*time.Second).Should(Succeed(), "Webhook service should be ready")
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
@@ -89,6 +82,10 @@ var _ = Describe("Manager", Ordered, func() {
 	AfterAll(func() {
 		By("undeploying the controller-manager")
 		cmd := exec.Command("make", "undeploy")
+		_, _ = utils.Run(cmd)
+
+		By("cleaning up the ai gateway operator")
+		cmd = exec.Command("kubectl", "delete", "-f", aiGatewayInstallUrl)
 		_, _ = utils.Run(cmd)
 
 		By("uninstalling CRDs")
@@ -182,99 +179,63 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(verifyCertManager).Should(Succeed())
 		})
 
-		It("should have CA injection for mutating webhooks", func() {
-			By("checking CA injection for mutating webhooks")
-			verifyCAInjection := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get",
-					"mutatingwebhookconfigurations.admissionregistration.k8s.io",
-					"ai-gateway-litellm-mutating-webhook-configuration",
-					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
-				mwhOutput, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(mwhOutput)).To(BeNumerically(">", 10))
-			}
-			Eventually(verifyCAInjection).Should(Succeed())
-		})
-
-		It("should have CA injection for validating webhooks", func() {
-			By("checking CA injection for validating webhooks")
-			verifyCAInjection := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get",
-					"validatingwebhookconfigurations.admissionregistration.k8s.io",
-					"ai-gateway-litellm-validating-webhook-configuration",
-					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
-				vwhOutput, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(vwhOutput)).To(BeNumerically(">", 10))
-			}
-			Eventually(verifyCAInjection).Should(Succeed())
-		})
-
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		// Test your actual ModelRouter functionality
-		It("should successfully create and reconcile a ModelRouter", func() {
-			By("creating a test ModelRouter")
-			cmd := exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = bytes.NewBufferString(`
-apiVersion: gateway.agentic-layer.ai/v1alpha1
-kind: ModelRouter
-metadata:
-  name: test-router
-  namespace: default
-spec:
-  type: litellm
-  aiModels:
-  - name: openai/gpt-4
-  - name: gemini/gemini-1.5-pro
-`)
+		// Test your actual AiGateway functionality
+		It("should successfully create and reconcile an AiGateway", func() {
+			By("creating a test AiGateway")
+			cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/crs/ai-gateway.yaml")
 			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create ModelRouter")
+			Expect(err).NotTo(HaveOccurred(), "Failed to create AiGateway")
 
-			By("verifying the ModelRouter was created")
+			By("verifying the AiGateway was created")
 			Eventually(func() error {
-				cmd := exec.Command("kubectl", "get", "modelrouter", "test-router", "-o", "jsonpath={.metadata.name}")
+				cmd := exec.Command("kubectl", "get", "aigateway", "test-gateway", "-o", "jsonpath={.metadata.name}")
 				output, err := utils.Run(cmd)
 				if err != nil {
 					return err
 				}
-				if output != "test-router" {
-					return fmt.Errorf("ModelRouter not found")
+				if output != "test-gateway" {
+					return fmt.Errorf("AiGateway not found")
 				}
 				return nil
 			}, 1*time.Minute).Should(Succeed())
 
 			By("verifying the ConfigMap was created")
 			Eventually(func() error {
-				cmd := exec.Command("kubectl", "get", "configmap", "test-router-config", "-o", "jsonpath={.data.config\\.yaml}")
+				cmd := exec.Command("kubectl", "get", "configmap", "test-gateway-config", "-o", "jsonpath={.data.config\\.yaml}")
 				output, err := utils.Run(cmd)
 				if err != nil {
 					return err
 				}
 				if !strings.Contains(output, "model_list") {
-					return fmt.Errorf("ConfigMap missing model_list")
+					return fmt.Errorf("configMap missing model_list")
 				}
 				if !strings.Contains(output, "gpt-4") {
-					return fmt.Errorf("ConfigMap missing gpt-4 model")
+					return fmt.Errorf("configMap missing gpt-4 model")
 				}
 				return nil
 			}, 2*time.Minute).Should(Succeed())
 
 			By("verifying the Deployment was created")
 			Eventually(func() error {
-				cmd := exec.Command("kubectl", "get", "deployment", "test-router", "-o", "jsonpath={.metadata.name}")
+				cmd := exec.Command("kubectl", "get", "deployment", "test-gateway", "-o", "jsonpath={.metadata.name}")
 				output, err := utils.Run(cmd)
 				if err != nil {
 					return err
 				}
-				if output != "test-router" {
-					return fmt.Errorf("Deployment not found")
+				if output != "test-gateway" {
+					return fmt.Errorf("deployment not found")
 				}
 				return nil
 			}, 2*time.Minute).Should(Succeed())
 
-			By("cleaning up the test ModelRouter")
-			cmd = exec.Command("kubectl", "delete", "modelrouter", "test-router")
+			By("cleaning up the test AiGateway")
+			cmd = exec.Command("kubectl", "delete", "aigateway", "test-gateway")
+			_, _ = utils.Run(cmd) // Ignore errors on cleanup
+
+			By("cleaning up the test AiGatewayClass")
+			cmd = exec.Command("kubectl", "delete", "aigatewayclass", "litellm", "-n", "default")
 			_, _ = utils.Run(cmd) // Ignore errors on cleanup
 		})
 	})

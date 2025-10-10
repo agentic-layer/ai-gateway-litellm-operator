@@ -7,26 +7,13 @@ This guide walks you through installing the LiteLLM AI Gateway Operator on your 
 The LiteLLM AI Gateway requires the following dependencies:
 
 * **Kubernetes**: A running Kubernetes cluster
-* **cert-manager**: For managing TLS certificates for webhooks
+* **AI Gateway Operator**: The core operator for managing AI gateways. See xref:aioperator:how-to-guide.adoc[Install the AI Gateway Operator] for installation instructions.
 
 == Installation
 
 === Install with Kubernetes YAML
 
-==== Step 1: Install cert-manager
-
-The LiteLLM AI Gateway requires cert-manager for webhook support:
-
-[source,bash]
-----
-# Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.yaml
-
-# Wait for cert-manager to be ready
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=cert-manager -n cert-manager --timeout=60s
-----
-
-==== Step 2: Install the LiteLLM AI Gateway
+==== Install the LiteLLM AI Gateway
 
 [source,bash]
 ----

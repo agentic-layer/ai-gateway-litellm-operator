@@ -1,6 +1,6 @@
 # AI Gateway LiteLLM
 
-"AI Gateway LiteLLM" is a Kubernetes operator that creates and manages [LiteLLM](https://www.litellm.ai/) deployments. This operator serves as one possible implementation of an "AI Gateway" operator. It defines a generic `ModelRouter` custom resource.  
+"AI Gateway LiteLLM" is a Kubernetes operator that creates and manages [LiteLLM](https://www.litellm.ai/) deployments.
 
 The operator is based on the [Operator SDK](https://sdk.operatorframework.io/) framework. 
 
@@ -13,7 +13,7 @@ The operator is based on the [Operator SDK](https://sdk.operatorframework.io/) f
 - [End-to-End (E2E) Testing](#end-to-end-e2e-testing)
 - [Testing Tools and Configuration](#testing-tools-and-configuration)
 - [Sample Data](#sample-data)
-- [Contributing](#contributing)
+- [Contributing](#contribution)
 
 ----
 ## Prerequisites
@@ -33,12 +33,18 @@ Before working with this project, ensure you have the following tools installed 
 📖 **For detailed setup instructions**, see our [Getting Started guide](https://docs.agentic-layer.ai/ai-gateway-litellm/how-to-guides.html) in the documentation.
 
 **Quick Start:**
+
+> **Note:** This operator requires the [AI Gateway Operator](https://github.com/agentic-layer/ai-gateway-operator) to be installed first, as it provides the required CRDs (`AiGateway` and `AiGatewayClass`).
+
 ```bash
 # Create local cluster and install cert-manager
 kind create cluster
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.yaml
 
-# Install the operator
+# Install the AI Gateway Operator (provides CRDs)
+kubectl apply -f https://github.com/agentic-layer/ai-gateway-operator/releases/download/v0.1.0/install.yaml
+
+# Install the LiteLLM operator
 kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm/releases/download/v0.0.1/install.yaml
 ```
 
@@ -63,21 +69,20 @@ make deploy
 
 ### Custom Resource Configuration
 
-To deploy a LiteLLM ModelRouter instance, you define a `ModelRouter` resource. Here is an example configuration:
+To deploy a LiteLLM AI Gateway instance, you define an `AiGateway` resource. Here is an example configuration:
 
 ```yaml
 apiVersion: gateway.agentic-layer.ai/v1alpha1
-kind: ModelRouter
+kind: AiGateway
 metadata:
-  labels:
-    app.kubernetes.io/name: ai-gateway-litellm
-    app.kubernetes.io/managed-by: kustomize
   name: my-litellm
 spec:
-  type: litellm
+  AiGatewayClassName: litellm
   aiModels:
-    - name: openai/gpt-3.5-turbo
-    - name: gemini/gemini-1.5-pro
+    - provider: openai
+      name: gpt-3.5-turbo
+    - provider: gemini
+      name: gemini-1.5-pro
 
 ```
 
@@ -126,98 +131,30 @@ make cleanup-test-e2e
 
 ## Sample Data
 
-The project includes sample `Agent` custom resources to help you get started.
+The project includes sample `AiGateway` custom resources to help you get started.
 
 * **Where to find sample data?**
   Sample manifests are located in the `config/samples/` directory.
 
-* **How to deploy a sample agent?**
-  You can deploy the sample "weather-agent" with the following `kubectl` command:
+* **How to deploy a sample AI Gateway?**
+  You can deploy the sample "my-litellm" with the following `kubectl` command:
 
   ```bash
   kubectl apply -k config/samples/
   ```
 
-* **How to verify the sample agent?**
+* **How to verify the sample AI Gateway?**
   After applying the sample, you can check the status of the created resources:
 
   ```bash
-  # Check the modelrouter's status
-  kubectl get modelrouters my-litellm -o yaml
+  # Check the aigateway's status
+  kubectl get aigateways my-litellm -o yaml
   ```
   ```bash
   # Check the deployment created by the operator
   kubectl get deployments -l app.kubernetes.io/name=my-litellm
   ```
-## Contributing
 
-We welcome contributions to the Agentic Layer! Please follow these guidelines:
+## Contribution
 
-### Setup for Contributors
-
-1. **Fork and clone the repository**
-2. **Install pre-commit hooks** (mandatory for all contributors):
-   ```bash
-   brew bundle
-   ```
-   ```bash
-   # Install hooks for this repository
-   pre-commit install
-   ```
-
-3. **Verify your development environment**:
-   ```bash
-   # Run all checks that pre-commit will run
-   make fmt vet lint test
-   ```
-
-### Code Style and Standards
-
-- **Go Style**: We follow standard Go conventions and use `gofmt` for formatting
-- **Linting**: Code must pass golangci-lint checks (see `.golangci.yml`)
-- **Testing**: All new features must include appropriate unit tests
-- **Documentation**: Update relevant documentation for new features
-
-### Development Workflow
-
-1. **Create a feature branch** from `main`:
-   ```bash
-   git checkout -b feature/PAAL-1234-your-feature-name
-   ```
-
-2. **Make your changes** following the code style guidelines
-
-3. **Run development checks**:
-   ```bash
-   # Format code
-   make fmt
-
-   # Run static analysis
-   make vet
-
-   # Run linting
-   make lint
-
-   # Run unit tests
-   make test
-
-   # Generate updated manifests if needed
-   make manifests generate
-   ```
-
-4. **Test your changes**:
-   ```bash
-   # Run E2E tests to ensure everything works
-   make test-e2e
-   ```
-5. **Update Documentation**:
-   Documentation is located in the [`/docs`](/docs) directory. We use the **[Diátaxis framework](https://diataxis.fr/)** for structure and **Antora** to build the site. Please adhere to these conventions when making updates.
-
-6. **Commit your changes** with a descriptive commit message
-
-7**Submit a pull request** with:
-- Clear description of the changes
-- Reference to any related issues
-- Screenshots/logs if applicable
-
-Thank you for contributing to the Agentic Layer!
+See [Contribution Guide](https://github.com/agentic-layer/ai-gateway-litellm-operator?tab=contributing-ov-file) for details on contribution, and the process for submitting pull requests.

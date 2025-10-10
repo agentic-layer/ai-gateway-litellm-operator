@@ -26,6 +26,8 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"github.com/agentic-layer/ai-gateway-litellm/internal/controller"
+	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-operator/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -36,10 +38,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-
-	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
-	"github.com/agentic-layer/ai-gateway-litellm/internal/controller"
-	webhookv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -203,19 +201,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.ModelRouterReconciler{
+	if err := (&controller.AiGatewayReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ModelRouter")
+		setupLog.Error(err, "unable to create controller", "controller", "AiGateway")
 		os.Exit(1)
-	}
-	// nolint:goconst
-	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err := webhookv1alpha1.SetupModelRouterWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "ModelRouter")
-			os.Exit(1)
-		}
 	}
 	// +kubebuilder:scaffold:builder
 

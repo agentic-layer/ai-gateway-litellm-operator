@@ -127,6 +127,18 @@ func InstallCertManager() error {
 		"--namespace", "cert-manager",
 		"--timeout", "5m",
 	)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	// Additionally wait for the CA bundle to be populated in the webhook configuration
+	// to ensure the webhook is fully operational.
+	// Certificates are populated asynchronously after the webhook deployment is ready.
+	cmd = exec.Command("kubectl", "wait", "validatingwebhookconfiguration/cert-manager-webhook",
+		"--for", "jsonpath={.webhooks[0].clientConfig.caBundle}",
+		"--namespace", "cert-manager",
+		"--timeout", "5m",
+	)
 
 	_, err := Run(cmd)
 	return err

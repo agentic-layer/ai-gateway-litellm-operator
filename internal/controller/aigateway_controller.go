@@ -18,12 +18,15 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"strconv"
+	"strings"
 
-	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/constants"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/equality"
+	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-operator/api/v1alpha1"
+	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -37,126 +40,225 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// ModelRouterReconciler reconciles a ModelRouter object
-type ModelRouterReconciler struct {
+const ControllerName = "aigateway.agentic-layer.ai/ai-gateway-litellm-controller"
+
+// LiteLLMConfig configuration structs
+type LiteLLMConfig struct {
+	ModelList       []ModelConfig   `yaml:"model_list"`
+	LiteLLMSettings LiteLLMSettings `yaml:"litellm_settings,omitempty"`
+}
+
+type ModelConfig struct {
+	ModelName     string        `yaml:"model_name"`
+	LiteLLMParams LiteLLMParams `yaml:"litellm_params"`
+}
+
+type LiteLLMParams struct {
+	Model  string `yaml:"model"`
+	ApiKey string `yaml:"api_key,omitempty"`
+}
+
+type LiteLLMSettings struct {
+	RequestTimeout int `yaml:"request_timeout,omitempty"`
+}
+
+// AiGatewayReconciler reconciles an AiGateway object
+type AiGatewayReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=gateway.agentic-layer.ai,resources=modelrouters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=gateway.agentic-layer.ai,resources=modelrouters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=gateway.agentic-layer.ai,resources=modelrouters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=agentic-layer.ai,resources=aigateways,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=agentic-layer.ai,resources=aigateways/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=agentic-layer.ai,resources=aigateways/finalizers,verbs=update
+// +kubebuilder:rbac:groups=agentic-layer.ai,resources=aigatewayclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 
-func (r *ModelRouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	// Fetch the ModelRouter instance that triggered the reconciliation
-	var modelRouter gatewayv1alpha1.ModelRouter
-	if err := r.Get(ctx, req.NamespacedName, &modelRouter); err != nil {
+	// Fetch the AiGateway instance that triggered the reconciliation
+	var aiGateway gatewayv1alpha1.AiGateway
+	if err := r.Get(ctx, req.NamespacedName, &aiGateway); err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("ModelRouter resource not found")
+			log.Info("AiGateway resource not found")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get ModelRouter")
+		log.Error(err, "Failed to get AiGateway")
 		return ctrl.Result{}, err
 	}
 
-	if !r.shouldProcessModelRouter(&modelRouter) {
+	if !r.shouldProcessAiGateway(ctx, &aiGateway) {
 		return ctrl.Result{}, nil
 	}
 
-	log.Info("Reconciling ModelRouter", "name", modelRouter.Name, "namespace", modelRouter.Namespace)
+	log.Info("Reconciling AiGateway", "name", aiGateway.Name, "namespace", aiGateway.Namespace)
 
 	// Initialize status if needed
-	if modelRouter.Status.Conditions == nil {
-		modelRouter.Status.Conditions = []metav1.Condition{}
+	if aiGateway.Status.Conditions == nil {
+		aiGateway.Status.Conditions = []metav1.Condition{}
 	}
 
 	// Step 1: Generate configuration
-	configData, configHash, err := r.generateModelRouterConfig(ctx, &modelRouter)
+	configData, configHash, err := r.generateAiGatewayConfig(ctx, &aiGateway)
 	if err != nil {
 		log.Error(err, "Failed to generate configuration")
-		r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionFalse,
+		r.updateCondition(&aiGateway, constants.AiGatewayConfigured, metav1.ConditionFalse,
 			"ConfigGenerationFailed", fmt.Sprintf("Failed to generate config: %v", err))
-		r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionFalse,
-			"ConfigGenerationFailed", "ModelRouter not ready due to config generation failure")
-		if err := r.updateStatus(ctx, &modelRouter); err != nil {
+		r.updateCondition(&aiGateway, constants.AiGatewayReady, metav1.ConditionFalse,
+			"ConfigGenerationFailed", "AiGateway not ready due to config generation failure")
+		if err := r.updateStatus(ctx, &aiGateway); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 
 	// Step 3: Create/update ConfigMap with configuration
-	if err := r.reconcileConfigMap(ctx, &modelRouter, configData); err != nil {
+	if err := r.reconcileConfigMap(ctx, &aiGateway, configData); err != nil {
 		log.Error(err, "Failed to reconcile ConfigMap")
-		r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionFalse,
+		r.updateCondition(&aiGateway, constants.AiGatewayConfigured, metav1.ConditionFalse,
 			"ConfigMapFailed", fmt.Sprintf("Failed to create/update ConfigMap: %v", err))
-		if err := r.updateStatus(ctx, &modelRouter); err != nil {
+		if err := r.updateStatus(ctx, &aiGateway); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 
 	// Step 4: Create/update Deployment
-	if err := r.reconcileDeployment(ctx, &modelRouter, configHash); err != nil {
+	if err := r.reconcileDeployment(ctx, &aiGateway, configHash); err != nil {
 		log.Error(err, "Failed to reconcile Deployment")
-		r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionFalse,
+		r.updateCondition(&aiGateway, constants.AiGatewayReady, metav1.ConditionFalse,
 			"DeploymentFailed", fmt.Sprintf("Failed to create/update Deployment: %v", err))
-		if err := r.updateStatus(ctx, &modelRouter); err != nil {
+		if err := r.updateStatus(ctx, &aiGateway); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 
 	// Step 5: Create/update Service
-	if err := r.reconcileService(ctx, &modelRouter); err != nil {
+	if err := r.reconcileService(ctx, &aiGateway); err != nil {
 		log.Error(err, "Failed to reconcile Service")
-		r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionFalse,
+		r.updateCondition(&aiGateway, constants.AiGatewayReady, metav1.ConditionFalse,
 			"ServiceFailed", fmt.Sprintf("Failed to create/update Service: %v", err))
-		if err := r.updateStatus(ctx, &modelRouter); err != nil {
+		if err := r.updateStatus(ctx, &aiGateway); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 
-	r.updateCondition(&modelRouter, constants.ModelRouterConfigured, metav1.ConditionTrue,
-		constants.ReasonConfigurationApplied, "ModelRouter configuration successfully applied")
-	r.updateCondition(&modelRouter, constants.ModelRouterReady, metav1.ConditionTrue,
-		constants.ReasonModelRouterReady, "ModelRouter is ready and serving traffic")
+	r.updateCondition(&aiGateway, constants.AiGatewayConfigured, metav1.ConditionTrue,
+		constants.ReasonConfigurationApplied, "AiGateway configuration successfully applied")
+	r.updateCondition(&aiGateway, constants.AiGatewayReady, metav1.ConditionTrue,
+		constants.ReasonAiGatewayReady, "AiGateway is ready and serving traffic")
 
-	log.Info("Successfully reconciled ModelRouter", "name", modelRouter.Name,
-		"aiModels", len(modelRouter.Spec.AiModels), "configHash", configHash[:8])
+	log.Info("Successfully reconciled AiGateway", "name", aiGateway.Name,
+		"aiModels", len(aiGateway.Spec.AiModels), "configHash", configHash[:8])
 
-	if err := r.updateStatus(ctx, &modelRouter); err != nil {
+	if err := r.updateStatus(ctx, &aiGateway); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }
 
-// generateModelRouterConfig generates the configuration using the appropriate generator
-func (r *ModelRouterReconciler) generateModelRouterConfig(ctx context.Context, modelRouter *gatewayv1alpha1.ModelRouter) (string, string, error) {
-	// Create generator
-	generator, err := NewModelRouterGenerator(modelRouter.Spec.Type)
-	if err != nil {
-		return "", "", err
+// shouldProcessAiGateway determines if this controller is responsible for the given AiGateway
+func (r *AiGatewayReconciler) shouldProcessAiGateway(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway) bool {
+	log := logf.FromContext(ctx)
+
+	// If no className specified, check for default AiGatewayClass
+	var aiGatewayClassList gatewayv1alpha1.AiGatewayClassList
+	if err := r.List(ctx, &aiGatewayClassList); err != nil {
+		log.Info("If we can't list classes, don't process to avoid errors")
+		return false
 	}
 
-	return generator.Generate(ctx, modelRouter)
+	// Filter aiGatewayClassList to only contain classes with matching controller
+	var litellmClasses []gatewayv1alpha1.AiGatewayClass
+	for _, aiGatewayClass := range aiGatewayClassList.Items {
+		if aiGatewayClass.Spec.Controller == ControllerName {
+			litellmClasses = append(litellmClasses, aiGatewayClass)
+		}
+	}
+
+	// If className is explicitly set, check if it matches any of our managed classes
+	aiGatewayClassName := aiGateway.Spec.AiGatewayClassName
+	if aiGatewayClassName != "" {
+		for _, litellmClass := range litellmClasses {
+			if litellmClass.Name == aiGatewayClassName {
+				return true
+			}
+		}
+	}
+
+	// Look for AiGatewayClass with default annotation among filtered classes
+	for _, litellmClass := range litellmClasses {
+		if litellmClass.Annotations["aigatewayclass.kubernetes.io/is-default-class"] == "true" {
+			log.Info("Using default AiGatewayClass", "className", litellmClass.Name)
+			return true
+		}
+	}
+
+	return false
+}
+
+// generateAiGatewayConfig generates the configuration using the appropriate generator
+func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway) (string, string, error) {
+
+	log := logf.FromContext(ctx)
+
+	// Build model list with proper provider prefixes and environment variable API keys
+	modelList := make([]ModelConfig, len(aiGateway.Spec.AiModels))
+	for i, model := range aiGateway.Spec.AiModels {
+
+		modelConfig := ModelConfig{
+			ModelName: model.Name,
+			LiteLLMParams: LiteLLMParams{
+				Model:  fmt.Sprintf("%s/%s", model.Provider, model.Name),
+				ApiKey: r.getProviderApiKeyEnvVar(model),
+			},
+		}
+
+		modelList[i] = modelConfig
+	}
+
+	// Build complete configuration with settings
+	config := LiteLLMConfig{
+		ModelList: modelList,
+		LiteLLMSettings: LiteLLMSettings{
+			RequestTimeout: constants.DefaultRequestTimeout, // 10 minutes default timeout
+		},
+	}
+
+	// Generate YAML configuration
+	configYAML, err := yaml.Marshal(config)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to marshal LiteLLM config: %w", err)
+	}
+
+	// Generate configuration hash
+	hash := sha256.Sum256(configYAML)
+	configHash := fmt.Sprintf("%x", hash)[:16]
+
+	log.Info("Generated LiteLLM configuration", "aiGateway", aiGateway.Name, "models", len(aiGateway.Spec.AiModels), "configHash", configHash[:8])
+
+	return string(configYAML), configHash, nil
+}
+
+func (r *AiGatewayReconciler) getProviderApiKeyEnvVar(model gatewayv1alpha1.AiModel) string {
+	return strings.ToUpper(model.Provider) + "_API_KEY"
 }
 
 // reconcileConfigMap creates or updates the ConfigMap containing LiteLLM configuration
-func (r *ModelRouterReconciler) reconcileConfigMap(ctx context.Context, modelRouter *gatewayv1alpha1.ModelRouter, configData string) error {
+func (r *AiGatewayReconciler) reconcileConfigMap(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway, configData string) error {
 	log := logf.FromContext(ctx)
 
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-config", modelRouter.Name),
-			Namespace: modelRouter.Namespace,
+			Name:      fmt.Sprintf("%s-config", aiGateway.Name),
+			Namespace: aiGateway.Namespace,
 			Labels: map[string]string{
-				"app": modelRouter.Name,
+				"app": aiGateway.Name,
 			},
 		},
 		Data: map[string]string{
@@ -165,7 +267,7 @@ func (r *ModelRouterReconciler) reconcileConfigMap(ctx context.Context, modelRou
 	}
 
 	// Set owner reference
-	if err := controllerutil.SetControllerReference(modelRouter, configMap, r.Scheme); err != nil {
+	if err := controllerutil.SetControllerReference(aiGateway, configMap, r.Scheme); err != nil {
 		return fmt.Errorf("failed to set owner reference: %w", err)
 	}
 
@@ -204,25 +306,25 @@ func (r *ModelRouterReconciler) reconcileConfigMap(ctx context.Context, modelRou
 }
 
 // reconcileDeployment creates or updates the Deployment for LiteLLM
-func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRouter *gatewayv1alpha1.ModelRouter, configHash string) error {
+func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway, configHash string) error {
 	log := logf.FromContext(ctx)
 
 	replicas := int32(1)
 	labels := map[string]string{
-		"app": modelRouter.Name,
+		"app": aiGateway.Name,
 	}
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      modelRouter.Name,
-			Namespace: modelRouter.Namespace,
+			Name:      aiGateway.Name,
+			Namespace: aiGateway.Namespace,
 			Labels:    labels,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"app": modelRouter.Name,
+					"app": aiGateway.Name,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
@@ -240,7 +342,7 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "http",
-									ContainerPort: modelRouter.Spec.Port,
+									ContainerPort: aiGateway.Spec.Port,
 									Protocol:      corev1.ProtocolTCP,
 								},
 							},
@@ -256,9 +358,9 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 								"--config",
 								"/app/config/config.yaml",
 								"--port",
-								strconv.Itoa(int(modelRouter.Spec.Port)),
+								strconv.Itoa(int(aiGateway.Spec.Port)),
 							},
-							Env: r.buildEnvironmentVariables(modelRouter),
+							Env: r.buildEnvironmentVariables(aiGateway),
 						},
 					},
 					Volumes: []corev1.Volume{
@@ -267,7 +369,7 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 							VolumeSource: corev1.VolumeSource{
 								ConfigMap: &corev1.ConfigMapVolumeSource{
 									LocalObjectReference: corev1.LocalObjectReference{
-										Name: fmt.Sprintf("%s-config", modelRouter.Name),
+										Name: fmt.Sprintf("%s-config", aiGateway.Name),
 									},
 								},
 							},
@@ -279,7 +381,7 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 	}
 
 	// Set owner reference
-	if err := controllerutil.SetControllerReference(modelRouter, deployment, r.Scheme); err != nil {
+	if err := controllerutil.SetControllerReference(aiGateway, deployment, r.Scheme); err != nil {
 		return fmt.Errorf("failed to set owner reference: %w", err)
 	}
 
@@ -365,28 +467,28 @@ func (r *ModelRouterReconciler) reconcileDeployment(ctx context.Context, modelRo
 }
 
 // reconcileService creates or updates the Service for LiteLLM
-func (r *ModelRouterReconciler) reconcileService(ctx context.Context, modelRouter *gatewayv1alpha1.ModelRouter) error {
+func (r *AiGatewayReconciler) reconcileService(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway) error {
 	log := logf.FromContext(ctx)
 
 	labels := map[string]string{
-		"app": modelRouter.Name,
+		"app": aiGateway.Name,
 	}
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      modelRouter.Name,
-			Namespace: modelRouter.Namespace,
+			Name:      aiGateway.Name,
+			Namespace: aiGateway.Namespace,
 			Labels:    labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
-				"app": modelRouter.Name,
+				"app": aiGateway.Name,
 			},
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "http",
-					Port:       modelRouter.Spec.Port,
-					TargetPort: intstr.FromInt32(modelRouter.Spec.Port),
+					Port:       aiGateway.Spec.Port,
+					TargetPort: intstr.FromInt32(aiGateway.Spec.Port),
 					Protocol:   corev1.ProtocolTCP,
 				},
 			},
@@ -395,7 +497,7 @@ func (r *ModelRouterReconciler) reconcileService(ctx context.Context, modelRoute
 	}
 
 	// Set owner reference
-	if err := controllerutil.SetControllerReference(modelRouter, service, r.Scheme); err != nil {
+	if err := controllerutil.SetControllerReference(aiGateway, service, r.Scheme); err != nil {
 		return fmt.Errorf("failed to set owner reference: %w", err)
 	}
 
@@ -436,7 +538,7 @@ func (r *ModelRouterReconciler) reconcileService(ctx context.Context, modelRoute
 }
 
 // buildEnvironmentVariables creates environment variables for the deployment
-func (r *ModelRouterReconciler) buildEnvironmentVariables(modelRouter *gatewayv1alpha1.ModelRouter) []corev1.EnvVar {
+func (r *AiGatewayReconciler) buildEnvironmentVariables(aiGateway *gatewayv1alpha1.AiGateway) []corev1.EnvVar {
 	envVars := []corev1.EnvVar{
 		{
 			Name:  "LITELLM_LOG",
@@ -446,44 +548,37 @@ func (r *ModelRouterReconciler) buildEnvironmentVariables(modelRouter *gatewayv1
 
 	// Add API key environment variables for each model
 	// We need to determine what API keys are needed based on the models
-	generator, err := NewModelRouterGenerator(modelRouter.Spec.Type)
-	if err != nil {
-		return envVars // Return basic env vars if generator fails
+	apiKeyEnvVars := make(map[string]bool)
+
+	// Collect unique API key environment variables needed
+	for _, model := range aiGateway.Spec.AiModels {
+		apiKeyEnvVar := r.getProviderApiKeyEnvVar(model)
+		if apiKeyEnvVar != "" {
+			apiKeyEnvVars[apiKeyEnvVar] = true
+		}
 	}
 
-	if litellmGen, ok := generator.(*LiteLLMGenerator); ok {
-		apiKeyEnvVars := make(map[string]bool)
-
-		// Collect unique API key environment variables needed
-		for _, model := range modelRouter.Spec.AiModels {
-			_, apiKeyEnvVar := litellmGen.mapModelToLiteLLMFormat(model.Name)
-			if apiKeyEnvVar != "" {
-				apiKeyEnvVars[apiKeyEnvVar] = true
-			}
-		}
-
-		// Add environment variables from secret for each API key
-		for envVarName := range apiKeyEnvVars {
-			envVars = append(envVars, corev1.EnvVar{
-				Name: envVarName,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: constants.DefaultSecretName,
-						},
-						Key:      envVarName,
-						Optional: &[]bool{true}[0], // Make optional so deployment doesn't fail if secret missing
+	// Add environment variables from secret for each API key
+	for envVarName := range apiKeyEnvVars {
+		envVars = append(envVars, corev1.EnvVar{
+			Name: envVarName,
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: constants.DefaultSecretName,
 					},
+					Key:      envVarName,
+					Optional: &[]bool{true}[0], // Make optional so deployment doesn't fail if secret missing
 				},
-			})
-		}
+			},
+		})
 	}
 
 	return envVars
 }
 
-// updateCondition updates or adds a condition to the ModelRouter status
-func (r *ModelRouterReconciler) updateCondition(modelRouter *gatewayv1alpha1.ModelRouter, conditionType string, status metav1.ConditionStatus, reason, message string) {
+// updateCondition updates or adds a condition to the AiGateway status
+func (r *AiGatewayReconciler) updateCondition(aiGateway *gatewayv1alpha1.AiGateway, conditionType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:    conditionType,
 		Status:  status,
@@ -492,43 +587,36 @@ func (r *ModelRouterReconciler) updateCondition(modelRouter *gatewayv1alpha1.Mod
 	}
 
 	// Find existing condition
-	for i, existingCondition := range modelRouter.Status.Conditions {
+	for i, existingCondition := range aiGateway.Status.Conditions {
 		if existingCondition.Type == conditionType {
 			// Update existing condition
-			modelRouter.Status.Conditions[i] = condition
-			modelRouter.Status.Conditions[i].LastTransitionTime = metav1.Now()
+			aiGateway.Status.Conditions[i] = condition
+			aiGateway.Status.Conditions[i].LastTransitionTime = metav1.Now()
 			return
 		}
 	}
 
 	// Add new condition
 	condition.LastTransitionTime = metav1.Now()
-	modelRouter.Status.Conditions = append(modelRouter.Status.Conditions, condition)
+	aiGateway.Status.Conditions = append(aiGateway.Status.Conditions, condition)
 }
 
-// updateStatus updates the ModelRouter status
-func (r *ModelRouterReconciler) updateStatus(ctx context.Context, modelRouter *gatewayv1alpha1.ModelRouter) error {
-	if statusErr := r.Status().Update(ctx, modelRouter); statusErr != nil {
-		logf.FromContext(ctx).Error(statusErr, "Failed to update ModelRouter status")
+// updateStatus updates the AiGateway status
+func (r *AiGatewayReconciler) updateStatus(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway) error {
+	if statusErr := r.Status().Update(ctx, aiGateway); statusErr != nil {
+		logf.FromContext(ctx).Error(statusErr, "Failed to update AiGateway status")
 		return statusErr
 	}
 	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ModelRouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *AiGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gatewayv1alpha1.ModelRouter{}).
+		For(&gatewayv1alpha1.AiGateway{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
-		Named("modelrouter").
+		Named(ControllerName).
 		Complete(r)
-}
-
-func (r *ModelRouterReconciler) shouldProcessModelRouter(modelRouter *gatewayv1alpha1.ModelRouter) bool {
-	// NOTE: In the future, we will check the modelRouter.Spec.ModelRouterClassName field.
-	// If the field is not set, but the litellm ModelRouterClass is the default, then we are also responsible and should process the router
-
-	return modelRouter.Spec.Type == constants.TypeLitellm
 }

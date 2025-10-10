@@ -27,12 +27,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-litellm/api/v1alpha1"
+	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-operator/api/v1alpha1"
 )
 
-var _ = Describe("ModelRouter Controller", func() {
+var _ = Describe("AiGateway Controller", func() {
 	const (
-		resourceName        = "test-modelrouter"
+		resourceName        = "test-aigateway"
 		testNamespace       = "default"
 		invalidType         = "some-invalid-type"
 		validType           = "litellm"
@@ -41,8 +41,9 @@ var _ = Describe("ModelRouter Controller", func() {
 
 	ctx := context.Background()
 
-	Context("When reconciling a valid ModelRouter resource", func() {
-		var modelRouter *gatewayv1alpha1.ModelRouter
+	Context("When reconciling a valid AiGateway resource", func() {
+		var aiGateway *gatewayv1alpha1.AiGateway
+		var aiGatewayClass *gatewayv1alpha1.AiGatewayClass
 		var namespacedName types.NamespacedName
 
 		BeforeEach(func() {
@@ -51,36 +52,58 @@ var _ = Describe("ModelRouter Controller", func() {
 				Namespace: testNamespace,
 			}
 
-			By("Creating a valid ModelRouter resource")
-			modelRouter = &gatewayv1alpha1.ModelRouter{
+			By("Creating a default AiGatewayClass")
+			aiGatewayClass = &gatewayv1alpha1.AiGatewayClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "litellm",
+					Namespace: testNamespace,
+					Annotations: map[string]string{
+						"aigatewayclass.kubernetes.io/is-default-class": "true",
+					},
+				},
+				Spec: gatewayv1alpha1.AiGatewayClassSpec{
+					Controller: ControllerName,
+				},
+			}
+			Expect(k8sClient.Create(ctx, aiGatewayClass)).To(Succeed())
+
+			By("Creating a valid AiGateway resource")
+			aiGateway = &gatewayv1alpha1.AiGateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: testNamespace,
 				},
-				Spec: gatewayv1alpha1.ModelRouterSpec{
-					Type: validType,
+				Spec: gatewayv1alpha1.AiGatewaySpec{
 					Port: testPort,
 					AiModels: []gatewayv1alpha1.AiModel{
-						{Name: "gpt-3.5-turbo"},
-						{Name: "gpt-4"},
-						{Name: "claude-3-opus"},
+						{Name: "gpt-3.5-turbo", Provider: "openai"},
+						{Name: "gpt-4", Provider: "openai"},
+						{Name: "claude-3-opus", Provider: "anthropic"},
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, modelRouter)).To(Succeed())
+			Expect(k8sClient.Create(ctx, aiGateway)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			By("Cleaning up the ModelRouter resource")
-			resource := &gatewayv1alpha1.ModelRouter{}
+			By("Cleaning up the AiGateway resource")
+			resource := &gatewayv1alpha1.AiGateway{}
 			if err := k8sClient.Get(ctx, namespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+
+			By("Cleaning up the AiGatewayClass")
+			if aiGatewayClass != nil {
+				classResource := &gatewayv1alpha1.AiGatewayClass{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: aiGatewayClass.Name, Namespace: aiGatewayClass.Namespace}, classResource); err == nil {
+					Expect(k8sClient.Delete(ctx, classResource)).To(Succeed())
+				}
 			}
 		})
 
 		It("should successfully reconcile and create all required resources", func() {
 			By("Reconciling the created resource")
-			reconciler := &ModelRouterReconciler{
+			reconciler := &AiGatewayReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
@@ -101,7 +124,7 @@ var _ = Describe("ModelRouter Controller", func() {
 
 })
 
-// checkConfigMapReconciled verifies that the ConfigMap was created with correct litellm configuration
+// checkConfigMapReconciled verifies that the ConfigMap was created with correct LiteLLM configuration
 func checkConfigMapReconciled(ctx context.Context, namespacedName types.NamespacedName) {
 	By("Verifying ConfigMap was created")
 	configMap := &corev1.ConfigMap{}
@@ -125,7 +148,7 @@ func checkConfigMapReconciled(ctx context.Context, namespacedName types.Namespac
 
 	By("Verifying ConfigMap has owner reference")
 	Expect(configMap.OwnerReferences).To(HaveLen(1))
-	Expect(configMap.OwnerReferences[0].Kind).To(Equal("ModelRouter"))
+	Expect(configMap.OwnerReferences[0].Kind).To(Equal("AiGateway"))
 	Expect(configMap.OwnerReferences[0].Name).To(Equal(namespacedName.Name))
 	Expect(*configMap.OwnerReferences[0].Controller).To(BeTrue())
 }
@@ -171,7 +194,7 @@ func checkDeploymentReconciled(ctx context.Context, namespacedName types.Namespa
 
 	By("Verifying Deployment has owner reference")
 	Expect(deployment.OwnerReferences).To(HaveLen(1))
-	Expect(deployment.OwnerReferences[0].Kind).To(Equal("ModelRouter"))
+	Expect(deployment.OwnerReferences[0].Kind).To(Equal("AiGateway"))
 	Expect(deployment.OwnerReferences[0].Name).To(Equal(namespacedName.Name))
 	Expect(*deployment.OwnerReferences[0].Controller).To(BeTrue())
 }
@@ -198,30 +221,30 @@ func checkServiceReconciled(ctx context.Context, namespacedName types.Namespaced
 
 	By("Verifying Service has owner reference")
 	Expect(service.OwnerReferences).To(HaveLen(1))
-	Expect(service.OwnerReferences[0].Kind).To(Equal("ModelRouter"))
+	Expect(service.OwnerReferences[0].Kind).To(Equal("AiGateway"))
 	Expect(service.OwnerReferences[0].Name).To(Equal(namespacedName.Name))
 	Expect(*service.OwnerReferences[0].Controller).To(BeTrue())
 }
 
 // checkStatusConditions verifies that the appropriate status conditions are set
 func checkStatusConditions(ctx context.Context, namespacedName types.NamespacedName, shouldBeReady bool) {
-	By("Verifying ModelRouter status conditions")
-	modelRouter := &gatewayv1alpha1.ModelRouter{}
-	err := k8sClient.Get(ctx, namespacedName, modelRouter)
+	By("Verifying AiGateway status conditions")
+	aiGateway := &gatewayv1alpha1.AiGateway{}
+	err := k8sClient.Get(ctx, namespacedName, aiGateway)
 	Expect(err).NotTo(HaveOccurred())
 
 	if shouldBeReady {
 		// Should have successful conditions
-		configuredCondition := findCondition(modelRouter.Status.Conditions, "ModelRouterConfigured")
+		configuredCondition := findCondition(aiGateway.Status.Conditions, "AiGatewayConfigured")
 		Expect(configuredCondition).NotTo(BeNil())
 		Expect(configuredCondition.Status).To(Equal(metav1.ConditionTrue))
 
-		readyCondition := findCondition(modelRouter.Status.Conditions, "ModelRouterReady")
+		readyCondition := findCondition(aiGateway.Status.Conditions, "AiGatewayReady")
 		Expect(readyCondition).NotTo(BeNil())
 		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
 	} else {
 		// Should have failure conditions
-		conditions := modelRouter.Status.Conditions
+		conditions := aiGateway.Status.Conditions
 		Expect(conditions).ToNot(BeEmpty())
 
 		// At least one condition should be False
