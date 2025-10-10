@@ -215,7 +215,7 @@ func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGat
 			ModelName: model.Name,
 			LiteLLMParams: LiteLLMParams{
 				Model:  fmt.Sprintf("%s/%s", model.Provider, model.Name),
-				ApiKey: r.getProviderApiKeyEnvVar(model),
+				ApiKey: fmt.Sprintf("os.environ/%s", r.getProviderApiKeyEnvVar(model)),
 			},
 		}
 
