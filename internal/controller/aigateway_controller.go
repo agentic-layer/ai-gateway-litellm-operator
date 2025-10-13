@@ -140,6 +140,7 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Step 5: Create/update Service
 	if err := r.reconcileService(ctx, &aiGateway); err != nil {
 		log.Error(err, "Failed to reconcile Service")
+		aiGateway.Status.Url = ""
 		r.updateCondition(&aiGateway, constants.AiGatewayReady, metav1.ConditionFalse,
 			"ServiceFailed", fmt.Sprintf("Failed to create/update Service: %v", err))
 		if err := r.updateStatus(ctx, &aiGateway); err != nil {
@@ -148,6 +149,7 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
+	aiGateway.Status.Url = fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", aiGateway.Name, aiGateway.Namespace, aiGateway.Spec.Port)
 	r.updateCondition(&aiGateway, constants.AiGatewayConfigured, metav1.ConditionTrue,
 		constants.ReasonConfigurationApplied, "AiGateway configuration successfully applied")
 	r.updateCondition(&aiGateway, constants.AiGatewayReady, metav1.ConditionTrue,

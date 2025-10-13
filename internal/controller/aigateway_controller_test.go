@@ -242,6 +242,12 @@ func checkStatusConditions(ctx context.Context, namespacedName types.NamespacedN
 		readyCondition := findCondition(aiGateway.Status.Conditions, "AiGatewayReady")
 		Expect(readyCondition).NotTo(BeNil())
 		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+
+		// Verify Status.Url is set correctly
+		By("Verifying AiGateway status URL is set")
+		Expect(aiGateway.Status.Url).NotTo(BeEmpty())
+		expectedUrl := "http://" + namespacedName.Name + "." + namespacedName.Namespace + ".svc.cluster.local:8000"
+		Expect(aiGateway.Status.Url).To(Equal(expectedUrl))
 	} else {
 		// Should have failure conditions
 		conditions := aiGateway.Status.Conditions
