@@ -7,7 +7,7 @@ This guide walks you through installing the LiteLLM AI Gateway Operator on your 
 The LiteLLM AI Gateway requires the following dependencies:
 
 * **Kubernetes**: A running Kubernetes cluster
-* **AI Gateway Operator**: The core operator for managing AI gateways. See xref:aioperator:how-to-guide.adoc[Install the AI Gateway Operator] for installation instructions.
+* **AI Gateway Operator**: The core operator for managing AI gateways. See xref:ai-gateway-operator:operator:how-to-guide.adoc[Install the AI Gateway Operator] for installation instructions.
 
 == Installation
 
@@ -66,15 +66,6 @@ spec:
 ----
 # Check that the operator is running
 kubectl get pods -n ai-gateway-litellm-operator-system
-
-# Check that the CRDs are installed
-kubectl get crd aigateway.gateway.agentic-layer.ai
 ----
 
-You should see the operator pod running and the CRD available.
-
-== Next Steps
-
-Now that you have the LiteLLM AI Gateway installed, you can:
-
-1. xref:gateway:how-to-guide.adoc[Create your first AI gateway] - Learn how to deploy AI gateways
+You should see the operator pod running.

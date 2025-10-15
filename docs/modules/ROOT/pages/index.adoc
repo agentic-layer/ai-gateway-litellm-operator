@@ -11,9 +11,3 @@ Step-by-step guides to get you up and running:
 
 * xref:operator:how-to-guide.adoc[]
 * xref:gateway:how-to-guide.adoc[]
-
-== Reference
-
-Detailed reference information for all components:
-
-* xref:operator:reference.adoc[]

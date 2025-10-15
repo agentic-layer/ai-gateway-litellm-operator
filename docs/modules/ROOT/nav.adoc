@@ -1,6 +1,3 @@
 .How-To Guides
 * xref:operator:how-to-guide.adoc[]
 * xref:gateway:how-to-guide.adoc[]
-
-.Reference
-* xref:operator:reference.adoc[]
