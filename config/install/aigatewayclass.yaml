@@ -1,4 +1,4 @@
-apiVersion: agentic-layer.ai/v1alpha1
+apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: AiGatewayClass
 metadata:
   name: litellm

@@ -33,8 +33,6 @@ const namespace = "ai-gateway-litellm-system"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
-	const aiGatewayInstallUrl = "https://github.com/agentic-layer/ai-gateway-operator/releases/" +
-		"download/v0.1.0/install.yaml"
 
 	// Before running the tests, set up the environment by creating the namespace,
 	// enforce the restricted security policy to the namespace, installing CRDs,
@@ -51,25 +49,10 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
 
-		By("deploying the ai gateway operator")
-		cmd = exec.Command("kubectl", "apply", "-f", aiGatewayInstallUrl)
+		By("deploying the CRDs")
+		cmd = exec.Command("kubectl", "apply", "-k", "config/crd/external")
 		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the agent runtime")
-
-		By("waiting for ai-gateway-operator-controller-manager to be ready")
-		Eventually(func() error {
-			cmd := exec.Command("kubectl", "get", "deployment",
-				"ai-gateway-operator-controller-manager", "-n", "ai-gateway-operator-system",
-				"-o", "jsonpath={.status.readyReplicas}")
-			output, err := utils.Run(cmd)
-			if err != nil {
-				return err
-			}
-			if output == "" || output == "0" {
-				return fmt.Errorf("ai-gateway-operator deployment not ready")
-			}
-			return nil
-		}, 2*time.Minute, 10*time.Second).Should(Succeed(), "ai-gateway-operator deployment should be ready")
+		Expect(err).NotTo(HaveOccurred(), "Failed to deploy CRDs")
 
 		By("deploying the controller-manager")
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
@@ -84,8 +67,8 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd := exec.Command("make", "undeploy")
 		_, _ = utils.Run(cmd)
 
-		By("cleaning up the ai gateway operator")
-		cmd = exec.Command("kubectl", "delete", "-f", aiGatewayInstallUrl)
+		By("cleaning up the CRDs from agent runtime operator")
+		cmd = exec.Command("kubectl", "delete", "-k", "config/crd/external")
 		_, _ = utils.Run(cmd)
 
 		By("uninstalling CRDs")

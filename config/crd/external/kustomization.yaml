@@ -1,0 +1,5 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - runtime.agentic-layer.ai_aigateways.yaml
+  - runtime.agentic-layer.ai_aigatewayclasses.yaml

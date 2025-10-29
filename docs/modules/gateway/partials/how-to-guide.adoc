@@ -25,7 +25,7 @@ NOTE: The secret name must match the value configured in the operator. The defau
 +
 [source,yaml]
 ----
-apiVersion: agentic-layer.ai/v1alpha1
+apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: AiGateway
 metadata:
   name: ai-gateway-litellm

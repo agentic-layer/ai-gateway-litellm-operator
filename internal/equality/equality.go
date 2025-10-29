@@ -21,7 +21,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
 
-	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-operator/api/v1alpha1"
+	gatewayv1alpha1 "github.com/agentic-layer/agent-runtime-operator/api/v1alpha1"
 )
 
 // AiModelsEqual compares AI model slices for equality, ignoring order.

@@ -34,18 +34,18 @@ Before working with this project, ensure you have the following tools installed 
 
 **Quick Start:**
 
-> **Note:** This operator requires the [AI Gateway Operator](https://github.com/agentic-layer/ai-gateway-operator) to be installed first, as it provides the required CRDs (`AiGateway` and `AiGatewayClass`).
+> **Note:** This operator requires the [AI Gateway Operator](https://github.com/agentic-layer/agent-runtime-operator) to be installed first, as it provides the required CRDs (`AiGateway` and `AiGatewayClass`).
 
-```bash
+```shell
 # Create local cluster and install cert-manager
 kind create cluster
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.19.1/cert-manager.yaml
 
 # Install the AI Gateway Operator (provides CRDs)
-kubectl apply -f https://github.com/agentic-layer/ai-gateway-operator/releases/download/v0.1.0/install.yaml
+kubectl apply -f https://github.com/agentic-layer/agent-runtime-operator/releases/download/v0.9.0/install.yaml
 
 # Install the LiteLLM operator
-kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm/releases/download/v0.0.1/install.yaml
+kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm/releases/download/v0.2.0/install.yaml
 ```
 
 ## Development
@@ -72,7 +72,7 @@ make deploy
 To deploy a LiteLLM AI Gateway instance, you define an `AiGateway` resource. Here is an example configuration:
 
 ```yaml
-apiVersion: gateway.agentic-layer.ai/v1alpha1
+apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: AiGateway
 metadata:
   name: my-litellm
