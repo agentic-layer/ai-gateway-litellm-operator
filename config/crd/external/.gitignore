@@ -1,0 +1,5 @@
+# Ignore downloaded CRD files
+runtime.*.yaml
+
+# Ignore version tracking file
+.version

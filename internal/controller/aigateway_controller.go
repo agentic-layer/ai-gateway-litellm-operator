@@ -23,9 +23,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/agentic-layer/ai-gateway-litellm/internal/constants"
+	gatewayv1alpha1 "github.com/agentic-layer/agent-runtime-operator/api/v1alpha1"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/equality"
-	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-operator/api/v1alpha1"
 	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -38,6 +37,36 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+// Status condition types
+const (
+	// AiGatewayConfigured indicates if the AiGateway configuration is valid
+	AiGatewayConfigured = "AiGatewayConfigured"
+
+	// AiGatewayReady indicates if the AiGateway is ready to serve traffic
+	AiGatewayReady = "AiGatewayReady"
+)
+
+// Configuration constants
+const (
+	// DefaultRequestTimeout is the default timeout for LiteLLM requests in seconds
+	DefaultRequestTimeout = 600
+)
+
+// Secret and API key constants
+const (
+	// DefaultSecretName is the default name for the API keys secret
+	DefaultSecretName = "api-key-secrets"
+)
+
+// Condition reasons
+const (
+	// ReasonConfigurationApplied indicates successful configuration application
+	ReasonConfigurationApplied = "ConfigurationApplied"
+
+	// ReasonAiGatewayReady indicates AiGateway is ready
+	ReasonAiGatewayReady = "AiGatewayReady"
 )
 
 const ControllerName = "aigateway.agentic-layer.ai/ai-gateway-litellm-controller"
@@ -68,10 +97,10 @@ type AiGatewayReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=agentic-layer.ai,resources=aigateways,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=agentic-layer.ai,resources=aigateways/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=agentic-layer.ai,resources=aigateways/finalizers,verbs=update
-// +kubebuilder:rbac:groups=agentic-layer.ai,resources=aigatewayclasses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=runtime.agentic-layer.ai,resources=aigateways,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=runtime.agentic-layer.ai,resources=aigateways/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=runtime.agentic-layer.ai,resources=aigateways/finalizers,verbs=update
+// +kubebuilder:rbac:groups=runtime.agentic-layer.ai,resources=aigatewayclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
@@ -105,9 +134,9 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	configData, configHash, err := r.generateAiGatewayConfig(ctx, &aiGateway)
 	if err != nil {
 		log.Error(err, "Failed to generate configuration")
-		r.updateCondition(&aiGateway, constants.AiGatewayConfigured, metav1.ConditionFalse,
+		r.updateCondition(&aiGateway, AiGatewayConfigured, metav1.ConditionFalse,
 			"ConfigGenerationFailed", fmt.Sprintf("Failed to generate config: %v", err))
-		r.updateCondition(&aiGateway, constants.AiGatewayReady, metav1.ConditionFalse,
+		r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionFalse,
 			"ConfigGenerationFailed", "AiGateway not ready due to config generation failure")
 		if err := r.updateStatus(ctx, &aiGateway); err != nil {
 			return ctrl.Result{}, err
@@ -118,7 +147,7 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Step 3: Create/update ConfigMap with configuration
 	if err := r.reconcileConfigMap(ctx, &aiGateway, configData); err != nil {
 		log.Error(err, "Failed to reconcile ConfigMap")
-		r.updateCondition(&aiGateway, constants.AiGatewayConfigured, metav1.ConditionFalse,
+		r.updateCondition(&aiGateway, AiGatewayConfigured, metav1.ConditionFalse,
 			"ConfigMapFailed", fmt.Sprintf("Failed to create/update ConfigMap: %v", err))
 		if err := r.updateStatus(ctx, &aiGateway); err != nil {
 			return ctrl.Result{}, err
@@ -129,7 +158,7 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Step 4: Create/update Deployment
 	if err := r.reconcileDeployment(ctx, &aiGateway, configHash); err != nil {
 		log.Error(err, "Failed to reconcile Deployment")
-		r.updateCondition(&aiGateway, constants.AiGatewayReady, metav1.ConditionFalse,
+		r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionFalse,
 			"DeploymentFailed", fmt.Sprintf("Failed to create/update Deployment: %v", err))
 		if err := r.updateStatus(ctx, &aiGateway); err != nil {
 			return ctrl.Result{}, err
@@ -140,7 +169,7 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Step 5: Create/update Service
 	if err := r.reconcileService(ctx, &aiGateway); err != nil {
 		log.Error(err, "Failed to reconcile Service")
-		r.updateCondition(&aiGateway, constants.AiGatewayReady, metav1.ConditionFalse,
+		r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionFalse,
 			"ServiceFailed", fmt.Sprintf("Failed to create/update Service: %v", err))
 		if err := r.updateStatus(ctx, &aiGateway); err != nil {
 			return ctrl.Result{}, err
@@ -148,10 +177,10 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	r.updateCondition(&aiGateway, constants.AiGatewayConfigured, metav1.ConditionTrue,
-		constants.ReasonConfigurationApplied, "AiGateway configuration successfully applied")
-	r.updateCondition(&aiGateway, constants.AiGatewayReady, metav1.ConditionTrue,
-		constants.ReasonAiGatewayReady, "AiGateway is ready and serving traffic")
+	r.updateCondition(&aiGateway, AiGatewayConfigured, metav1.ConditionTrue,
+		ReasonConfigurationApplied, "AiGateway configuration successfully applied")
+	r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionTrue,
+		ReasonAiGatewayReady, "AiGateway is ready and serving traffic")
 
 	log.Info("Successfully reconciled AiGateway", "name", aiGateway.Name,
 		"aiModels", len(aiGateway.Spec.AiModels), "configHash", configHash[:8])
@@ -226,7 +255,7 @@ func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGat
 	config := LiteLLMConfig{
 		ModelList: modelList,
 		LiteLLMSettings: LiteLLMSettings{
-			RequestTimeout: constants.DefaultRequestTimeout, // 10 minutes default timeout
+			RequestTimeout: DefaultRequestTimeout, // 10 minutes default timeout
 		},
 	}
 
@@ -565,7 +594,7 @@ func (r *AiGatewayReconciler) buildEnvironmentVariables(aiGateway *gatewayv1alph
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: constants.DefaultSecretName,
+						Name: DefaultSecretName,
 					},
 					Key:      envVarName,
 					Optional: &[]bool{true}[0], // Make optional so deployment doesn't fail if secret missing

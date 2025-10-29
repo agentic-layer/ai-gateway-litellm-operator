@@ -27,15 +27,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	gatewayv1alpha1 "github.com/agentic-layer/ai-gateway-operator/api/v1alpha1"
+	gatewayv1alpha1 "github.com/agentic-layer/agent-runtime-operator/api/v1alpha1"
 )
 
 var _ = Describe("AiGateway Controller", func() {
 	const (
 		resourceName        = "test-aigateway"
 		testNamespace       = "default"
-		invalidType         = "some-invalid-type"
-		validType           = "litellm"
 		testPort      int32 = 8000
 	)
 

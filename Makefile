@@ -95,7 +95,7 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: manifests
-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+manifests: controller-gen agent-runtime-crds ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
@@ -380,3 +380,30 @@ catalog-push: ## Push a catalog image.
 .PHONY: kind
 kind-load:
 	$(KIND) load docker-image $(IMG)
+
+
+## Agent Runtime CRD configuration
+AGENT_RUNTIME_CRD_VERSION ?= 0.9.0
+AGENT_RUNTIME_CRD_DIR = config/crd/external
+AGENT_RUNTIME_CRD_BASE_URL = https://raw.githubusercontent.com/agentic-layer/agent-runtime-operator/refs/tags/v$(AGENT_RUNTIME_CRD_VERSION)/config/crd/bases
+AGENT_RUNTIME_CRD_FILES = runtime.agentic-layer.ai_aigateways.yaml runtime.agentic-layer.ai_aigatewayclasses.yaml
+AGENT_RUNTIME_CRDS = $(addprefix $(AGENT_RUNTIME_CRD_DIR)/,$(AGENT_RUNTIME_CRD_FILES))
+AGENT_RUNTIME_CRD_VERSION_FILE = $(AGENT_RUNTIME_CRD_DIR)/.version
+
+## Download Agent Runtime CRDs from upstream repository
+.PHONY: agent-runtime-crds
+agent-runtime-crds: $(AGENT_RUNTIME_CRDS)
+
+$(AGENT_RUNTIME_CRD_DIR)/%.yaml: $(AGENT_RUNTIME_CRD_VERSION_FILE)
+	@echo "Downloading $(notdir $@) version $(AGENT_RUNTIME_CRD_VERSION)..."
+	@curl -sSLf -o $@ $(AGENT_RUNTIME_CRD_BASE_URL)/$(notdir $@)
+
+$(AGENT_RUNTIME_CRD_VERSION_FILE): FORCE
+	@if [ ! -f $@ ] || [ "$$(cat $@)" != "$(AGENT_RUNTIME_CRD_VERSION)" ]; then \
+		echo "Version changed to $(AGENT_RUNTIME_CRD_VERSION), removing old CRDs..."; \
+		rm -f $(AGENT_RUNTIME_CRDS); \
+		echo "$(AGENT_RUNTIME_CRD_VERSION)" > $@; \
+	fi
+
+.PHONY: FORCE
+FORCE:

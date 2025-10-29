@@ -18,40 +18,6 @@ rules:
   - update
   - watch
 - apiGroups:
-  - agentic-layer.ai
-  resources:
-  - aigatewayclasses
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - agentic-layer.ai
-  resources:
-  - aigateways
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - agentic-layer.ai
-  resources:
-  - aigateways/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - agentic-layer.ai
-  resources:
-  - aigateways/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
   - apps
   resources:
   - deployments
@@ -63,3 +29,37 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - runtime.agentic-layer.ai
+  resources:
+  - aigatewayclasses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - runtime.agentic-layer.ai
+  resources:
+  - aigateways
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - runtime.agentic-layer.ai
+  resources:
+  - aigateways/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - runtime.agentic-layer.ai
+  resources:
+  - aigateways/status
+  verbs:
+  - get
+  - patch
+  - update
