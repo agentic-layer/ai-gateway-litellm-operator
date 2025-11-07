@@ -18,7 +18,7 @@ The LiteLLM AI Gateway requires the following dependencies:
 [source,bash]
 ----
 # Install the operator
-kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm/releases/download/v0.0.6/install.yaml
+kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm-operator/releases/download/v0.2.0/install.yaml
 # Wait for the operator to be ready
 kubectl wait --for=condition=Available --timeout=60s -n ai-gateway-litellm-system deployment/ai-gateway-litellm-controller-manager
 ----
