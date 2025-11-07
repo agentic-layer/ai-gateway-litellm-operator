@@ -45,7 +45,7 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 kubectl apply -f https://github.com/agentic-layer/agent-runtime-operator/releases/download/v0.9.0/install.yaml
 
 # Install the LiteLLM operator
-kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm/releases/download/v0.2.0/install.yaml
+kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm-operator/releases/download/v0.2.0/install.yaml
 ```
 
 ## Development
