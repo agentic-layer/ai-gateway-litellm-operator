@@ -1,0 +1,13 @@
+= AI Gateway Reference
+
+== Full API Reference
+
+https://pkg.go.dev/github.com/agentic-layer/agent-runtime-operator/api/v1alpha1
+
+== CRDs
+
+The following Custom Resource Definitions (CRDs) are provided by the Agent Runtime Operator:
+
+* *AIGateway*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_aigateways.yaml
+
+* *AIGatewayClass*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_aigatewayclasses.yaml
