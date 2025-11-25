@@ -10,4 +10,5 @@ It can handle tasks such as routing requests to different models, managing authe
 Step-by-step guides to get you up and running:
 
 * xref:operator:how-to-guide.adoc[]
-* xref:gateway:how-to-guide.adoc[]
+* xref:agent-runtime-operator:ai-gateways:how-to-guide.adoc[]
+
