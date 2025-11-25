@@ -92,7 +92,8 @@ type LiteLLMParams struct {
 }
 
 type LiteLLMSettings struct {
-	RequestTimeout int `yaml:"request_timeout,omitempty"`
+	RequestTimeout int      `yaml:"request_timeout,omitempty"`
+	Callbacks      []string `yaml:"callbacks,omitempty"`
 }
 
 // AiGatewayReconciler reconciles an AiGateway object
@@ -259,7 +260,10 @@ func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGat
 	config := LiteLLMConfig{
 		ModelList: modelList,
 		LiteLLMSettings: LiteLLMSettings{
-			RequestTimeout: DefaultRequestTimeout, // 10 minutes default timeout
+			RequestTimeout: DefaultRequestTimeout,
+			// 'callbacks: ["otel"]' is required to send traces to otel after handling incoming requests
+			// (see https://docs.litellm.ai/docs/proxy/logging#opentelemetry)
+			Callbacks: []string{"otel"},
 		},
 	}
 
