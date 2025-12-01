@@ -221,5 +221,133 @@ var _ = Describe("Manager", Ordered, func() {
 			cmd = exec.Command("kubectl", "delete", "aigatewayclass", "litellm", "-n", "default")
 			_, _ = utils.Run(cmd) // Ignore errors on cleanup
 		})
+
+		It("should pass through environment variables from AiGateway spec to Deployment", func() {
+			By("creating a test AiGateway with environment variables")
+			cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/crs/ai-gateway-with-env.yaml")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create AiGateway")
+
+			By("verifying the AiGateway was created")
+			Eventually(func() error {
+				cmd := exec.Command("kubectl", "get", "aigateway", "test-gateway-with-env", "-o", "jsonpath={.metadata.name}")
+				output, err := utils.Run(cmd)
+				if err != nil {
+					return err
+				}
+				if output != "test-gateway-with-env" {
+					return fmt.Errorf("AiGateway not found")
+				}
+				return nil
+			}, 1*time.Minute).Should(Succeed())
+
+			By("verifying the Deployment was created")
+			Eventually(func() error {
+				cmd := exec.Command("kubectl", "get", "deployment", "test-gateway-with-env", "-o", "jsonpath={.metadata.name}")
+				output, err := utils.Run(cmd)
+				if err != nil {
+					return err
+				}
+				if output != "test-gateway-with-env" {
+					return fmt.Errorf("deployment not found")
+				}
+				return nil
+			}, 2*time.Minute).Should(Succeed())
+
+			By("verifying the Deployment contains the FAVORITE_COLOR environment variable")
+			Eventually(func() error {
+				cmd := exec.Command("kubectl", "get", "deployment", "test-gateway-with-env",
+					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='FAVORITE_COLOR')].value}")
+				output, err := utils.Run(cmd)
+				if err != nil {
+					return fmt.Errorf("failed to get FAVORITE_COLOR env var: %w", err)
+				}
+				if output != "BLUE" {
+					return fmt.Errorf("FAVORITE_COLOR env var has wrong value: expected 'BLUE', got '%s'", output)
+				}
+				return nil
+			}, 2*time.Minute).Should(Succeed())
+
+			By("verifying the Deployment contains the FOO environment variable")
+			Eventually(func() error {
+				cmd := exec.Command("kubectl", "get", "deployment", "test-gateway-with-env",
+					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='FOO')].value}")
+				output, err := utils.Run(cmd)
+				if err != nil {
+					return fmt.Errorf("failed to get FOO env var: %w", err)
+				}
+				if output != "BAR" {
+					return fmt.Errorf("FOO env var has wrong value: expected 'BAR', got '%s'", output)
+				}
+				return nil
+			}, 2*time.Minute).Should(Succeed())
+
+			By("cleaning up the test AiGateway")
+			cmd = exec.Command("kubectl", "delete", "aigateway", "test-gateway-with-env")
+			_, _ = utils.Run(cmd) // Ignore errors on cleanup
+
+			By("cleaning up the test AiGatewayClass")
+			cmd = exec.Command("kubectl", "delete", "aigatewayclass", "litellm", "-n", "default")
+			_, _ = utils.Run(cmd) // Ignore errors on cleanup
+		})
+
+		It("should pass through envFrom from AiGateway spec to Deployment", func() {
+			By("creating a test AiGateway with envFrom")
+			cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/crs/ai-gateway-with-envfrom.yaml")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create AiGateway with envFrom")
+
+			By("verifying the AiGateway was created")
+			Eventually(func() error {
+				cmd := exec.Command("kubectl", "get", "aigateway", "test-gateway-with-envfrom", "-o", "jsonpath={.metadata.name}")
+				output, err := utils.Run(cmd)
+				if err != nil {
+					return err
+				}
+				if output != "test-gateway-with-envfrom" {
+					return fmt.Errorf("AiGateway not found")
+				}
+				return nil
+			}, 1*time.Minute).Should(Succeed())
+
+			By("verifying the Deployment was created")
+			Eventually(func() error {
+				cmd := exec.Command("kubectl", "get", "deployment", "test-gateway-with-envfrom", "-o", "jsonpath={.metadata.name}")
+				output, err := utils.Run(cmd)
+				if err != nil {
+					return err
+				}
+				if output != "test-gateway-with-envfrom" {
+					return fmt.Errorf("deployment not found")
+				}
+				return nil
+			}, 2*time.Minute).Should(Succeed())
+
+			By("verifying the Deployment contains the envFrom ConfigMapRef")
+			Eventually(func() error {
+				cmd := exec.Command("kubectl", "get", "deployment", "test-gateway-with-envfrom",
+					"-o", "jsonpath={.spec.template.spec.containers[0].envFrom[?(@.configMapRef.name=='test-gateway-config')].configMapRef.name}")
+				output, err := utils.Run(cmd)
+				if err != nil {
+					return fmt.Errorf("failed to get envFrom configMapRef: %w", err)
+				}
+				if output != "test-gateway-config" {
+					return fmt.Errorf("envFrom configMapRef not found or has wrong value: expected 'test-gateway-config', got '%s'", output)
+				}
+				return nil
+			}, 2*time.Minute).Should(Succeed())
+
+			By("cleaning up the test AiGateway")
+			cmd = exec.Command("kubectl", "delete", "aigateway", "test-gateway-with-envfrom")
+			_, _ = utils.Run(cmd) // Ignore errors on cleanup
+
+			By("cleaning up the test ConfigMap")
+			cmd = exec.Command("kubectl", "delete", "configmap", "test-gateway-config")
+			_, _ = utils.Run(cmd) // Ignore errors on cleanup
+
+			By("cleaning up the test AiGatewayClass")
+			cmd = exec.Command("kubectl", "delete", "aigatewayclass", "litellm", "-n", "default")
+			_, _ = utils.Run(cmd) // Ignore errors on cleanup
+		})
 	})
 })

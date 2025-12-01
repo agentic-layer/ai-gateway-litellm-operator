@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	gatewayv1alpha1 "github.com/agentic-layer/agent-runtime-operator/api/v1alpha1"
+	"github.com/agentic-layer/ai-gateway-litellm/internal/controller/utils"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/equality"
 	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
@@ -52,6 +53,9 @@ const (
 const (
 	// DefaultRequestTimeout is the default timeout for LiteLLM requests in seconds
 	DefaultRequestTimeout = 600
+
+	// LiteLLMContainerName is the name of the LiteLLM container in the deployment
+	LiteLLMContainerName = "litellm"
 )
 
 // Secret and API key constants
@@ -366,7 +370,7 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  "litellm",
+							Name:  LiteLLMContainerName,
 							Image: "ghcr.io/berriai/litellm:v1.77.2-stable",
 							Ports: []corev1.ContainerPort{
 								{
@@ -389,7 +393,8 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 								"--port",
 								strconv.Itoa(int(aiGateway.Spec.Port)),
 							},
-							Env: r.buildEnvironmentVariables(aiGateway),
+							Env:     r.buildEnvironmentVariables(aiGateway),
+							EnvFrom: aiGateway.Spec.EnvFrom,
 						},
 					},
 					Volumes: []corev1.Volume{
@@ -440,19 +445,27 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 	}
 
 	// Check environment variables for changes
-	if len(existing.Spec.Template.Spec.Containers) > 0 && len(deployment.Spec.Template.Spec.Containers) > 0 {
-		if !equality.EnvVarsEqual(existing.Spec.Template.Spec.Containers[0].Env, deployment.Spec.Template.Spec.Containers[0].Env) {
+	existingContainer := utils.FindContainerByName(existing.Spec.Template.Spec.Containers, LiteLLMContainerName)
+	desiredContainer := utils.FindContainerByName(deployment.Spec.Template.Spec.Containers, LiteLLMContainerName)
+
+	if existingContainer != nil && desiredContainer != nil {
+		if !equality.EnvVarsEqual(existingContainer.Env, desiredContainer.Env) {
+			needsUpdate = true
+		}
+
+		// Check EnvFrom for changes
+		if !equality.EnvFromEqual(existingContainer.EnvFrom, desiredContainer.EnvFrom) {
 			needsUpdate = true
 		}
 
 		// Check image changes
-		if existing.Spec.Template.Spec.Containers[0].Image != deployment.Spec.Template.Spec.Containers[0].Image {
+		if existingContainer.Image != desiredContainer.Image {
 			needsUpdate = true
 		}
 
 		// Check port configuration changes
-		existingPorts := existing.Spec.Template.Spec.Containers[0].Ports
-		newPorts := deployment.Spec.Template.Spec.Containers[0].Ports
+		existingPorts := existingContainer.Ports
+		newPorts := desiredContainer.Ports
 		if len(existingPorts) != len(newPorts) {
 			needsUpdate = true
 		} else if len(existingPorts) > 0 && len(newPorts) > 0 {
@@ -602,6 +615,9 @@ func (r *AiGatewayReconciler) buildEnvironmentVariables(aiGateway *gatewayv1alph
 			},
 		})
 	}
+
+	// Add environment variables from AiGateway spec
+	envVars = append(envVars, aiGateway.Spec.Env...)
 
 	return envVars
 }
