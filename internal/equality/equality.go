@@ -58,3 +58,24 @@ func EnvVarsEqual(existing, desired []corev1.EnvVar) bool {
 	}
 	return cmp.Equal(existing, desired, cmpopts.SortSlices(sortFunc))
 }
+
+// EnvFromEqual compares environment variable source slices for equality, ignoring order.
+func EnvFromEqual(existing, desired []corev1.EnvFromSource) bool {
+	sortFunc := func(a, b corev1.EnvFromSource) bool {
+		// Sort by ConfigMapRef name first, then SecretRef name
+		aName := ""
+		bName := ""
+		if a.ConfigMapRef != nil {
+			aName = "cm:" + a.ConfigMapRef.Name
+		} else if a.SecretRef != nil {
+			aName = "secret:" + a.SecretRef.Name
+		}
+		if b.ConfigMapRef != nil {
+			bName = "cm:" + b.ConfigMapRef.Name
+		} else if b.SecretRef != nil {
+			bName = "secret:" + b.SecretRef.Name
+		}
+		return aName < bName
+	}
+	return cmp.Equal(existing, desired, cmpopts.SortSlices(sortFunc))
+}

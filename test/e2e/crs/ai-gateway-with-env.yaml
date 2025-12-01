@@ -1,0 +1,17 @@
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: AiGateway
+metadata:
+  name: test-gateway-with-env
+  namespace: default
+spec:
+  port: 4000
+  aiModels:
+    - name: gpt-4
+      provider: openai
+    - name: gemini-1.5-pro
+      provider: gemini
+  env:
+    - name: FAVORITE_COLOR
+      value: blue
+    - name: FOO
+      value: bar
