@@ -83,7 +83,10 @@ spec:
       name: gpt-3.5-turbo
     - provider: gemini
       name: gemini-1.5-pro
-
+  # see https://docs.litellm.ai/docs/proxy/config_settings#environment-variables---reference for a reference
+  env:
+   - name: DEBUG
+     value: "true"
 ```
 
 
