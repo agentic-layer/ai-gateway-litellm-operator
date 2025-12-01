@@ -1,5 +1,4 @@
 ## Append samples of your project ##
 resources:
 - v1alpha1_aigateway.yaml
-- _v1alpha1_aigateway.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

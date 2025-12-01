@@ -62,18 +62,22 @@ func EnvVarsEqual(existing, desired []corev1.EnvVar) bool {
 // EnvFromEqual compares environment variable source slices for equality, ignoring order.
 func EnvFromEqual(existing, desired []corev1.EnvFromSource) bool {
 	sortFunc := func(a, b corev1.EnvFromSource) bool {
-		// Sort by ConfigMapRef name first, then SecretRef name
+		// Sort by ConfigMapRef name first, then SecretRef name, then "none" if neither is set
 		aName := ""
 		bName := ""
 		if a.ConfigMapRef != nil {
 			aName = "cm:" + a.ConfigMapRef.Name
 		} else if a.SecretRef != nil {
 			aName = "secret:" + a.SecretRef.Name
+		} else {
+			aName = "none"
 		}
 		if b.ConfigMapRef != nil {
 			bName = "cm:" + b.ConfigMapRef.Name
 		} else if b.SecretRef != nil {
 			bName = "secret:" + b.SecretRef.Name
+		} else {
+			bName = "none"
 		}
 		return aName < bName
 	}

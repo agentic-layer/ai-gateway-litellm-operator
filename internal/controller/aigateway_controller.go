@@ -54,8 +54,8 @@ const (
 	// DefaultRequestTimeout is the default timeout for LiteLLM requests in seconds
 	DefaultRequestTimeout = 600
 
-	// LiteLLMContainerName is the name of the LiteLLM container in the deployment
-	LiteLLMContainerName = "litellm"
+	// liteLLMContainerName is the name of the LiteLLM container in the deployment
+	liteLLMContainerName = "litellm"
 )
 
 // Secret and API key constants
@@ -370,7 +370,7 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  LiteLLMContainerName,
+							Name:  liteLLMContainerName,
 							Image: "ghcr.io/berriai/litellm:v1.77.2-stable",
 							Ports: []corev1.ContainerPort{
 								{
@@ -445,8 +445,8 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 	}
 
 	// Check environment variables for changes
-	existingContainer := utils.FindContainerByName(existing.Spec.Template.Spec.Containers, LiteLLMContainerName)
-	desiredContainer := utils.FindContainerByName(deployment.Spec.Template.Spec.Containers, LiteLLMContainerName)
+	existingContainer := utils.FindContainerByName(existing.Spec.Template.Spec.Containers, liteLLMContainerName)
+	desiredContainer := utils.FindContainerByName(deployment.Spec.Template.Spec.Containers, liteLLMContainerName)
 
 	if existingContainer != nil && desiredContainer != nil {
 		if !equality.EnvVarsEqual(existingContainer.Env, desiredContainer.Env) {
@@ -581,12 +581,7 @@ func (r *AiGatewayReconciler) reconcileService(ctx context.Context, aiGateway *g
 
 // buildEnvironmentVariables creates environment variables for the deployment
 func (r *AiGatewayReconciler) buildEnvironmentVariables(aiGateway *gatewayv1alpha1.AiGateway) []corev1.EnvVar {
-	envVars := []corev1.EnvVar{
-		{
-			Name:  "LITELLM_LOG",
-			Value: "INFO",
-		},
-	}
+	envVars := []corev1.EnvVar{}
 
 	// Add API key environment variables for each model
 	// We need to determine what API keys are needed based on the models
