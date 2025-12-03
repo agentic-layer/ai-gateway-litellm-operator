@@ -22,11 +22,16 @@ import (
 	"os/exec"
 	"testing"
 
+	"github.com/agentic-layer/ai-gateway-litellm/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/agentic-layer/ai-gateway-litellm/test/utils"
 )
+
+// operatorName is the name of the operator being tested
+const operatorName = "ai-gateway-litellm-operator"
+
+// namespace where the project is deployed in
+const namespace = "ai-gateway-litellm-system"
 
 var (
 	// Optional Environment Variables:
@@ -76,12 +81,56 @@ var _ = BeforeSuite(func() {
 			_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: CertManager is already installed. Skipping installation...\n")
 		}
 	}
+
+	// Deploy the operator
+	By("creating manager namespace")
+	_, err = utils.Run(exec.Command("kubectl", "create", "ns", namespace))
+	Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
+
+	By("labeling the namespace to enforce the restricted security policy")
+	_, err = utils.Run(exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
+		"pod-security.kubernetes.io/enforce=restricted"))
+	Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
+
+	By("installing CRDs")
+	_, err = utils.Run(exec.Command("make", "install"))
+	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
+
+	By("deploying the controller-manager")
+	_, err = utils.Run(exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage)))
+	Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 })
 
 var _ = AfterSuite(func() {
-	// Teardown CertManager after the suite if not skipped and if it was not already installed
-	if !skipCertManagerInstall && !isCertManagerAlreadyInstalled {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling CertManager...\n")
-		utils.UninstallCertManager()
-	}
+	By("undeploying the controller-manager")
+	_, _ = utils.Run(exec.Command("make", "undeploy"))
+
+	By("uninstalling CRDs")
+	_, _ = utils.Run(exec.Command("make", "uninstall"))
+
+	By("removing manager namespace")
+	_, _ = utils.Run(exec.Command("kubectl", "delete", "ns", namespace))
+
+	// Note: Not tearing down CertManager for potential reuse during local testing
 })
+
+func fetchKubernetesEvents() {
+	By("Fetching Kubernetes events")
+	eventsOutput, err := utils.Run(exec.Command("kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp"))
+	if err == nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Kubernetes events:\n%s", eventsOutput)
+	} else {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Kubernetes events: %s", err)
+	}
+}
+
+func fetchControllerManagerPodLogs() {
+	By("Fetching controller manager pod logs")
+	controllerLogs, err := utils.Run(exec.Command("kubectl", "logs",
+		"-l", "app.kubernetes.io/name="+operatorName, "-n", namespace))
+	if err == nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Controller logs:\n %s", controllerLogs)
+	} else {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Controller logs: %s", err)
+	}
+}
