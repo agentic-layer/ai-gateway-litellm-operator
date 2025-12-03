@@ -42,7 +42,7 @@ kind create cluster
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.19.1/cert-manager.yaml
 
 # Install the AI Gateway Operator (provides CRDs)
-kubectl apply -f https://github.com/agentic-layer/agent-runtime-operator/releases/download/v0.9.0/install.yaml
+kubectl apply -f https://github.com/agentic-layer/agent-runtime-operator/releases/download/v0.13.0/install.yaml
 
 # Install the LiteLLM operator
 kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm-operator/releases/download/v0.2.0/install.yaml
