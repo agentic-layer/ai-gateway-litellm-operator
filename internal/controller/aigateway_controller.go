@@ -581,8 +581,25 @@ func (r *AiGatewayReconciler) reconcileService(ctx context.Context, aiGateway *g
 
 // buildEnvironmentVariables creates environment variables for the deployment
 func (r *AiGatewayReconciler) buildEnvironmentVariables(aiGateway *gatewayv1alpha1.AiGateway) []corev1.EnvVar {
-	envVars := []corev1.EnvVar{}
+	envMap := make(map[string]corev1.EnvVar)
 
+	r.generateApiKeyEnvVars(aiGateway, envMap)
+
+	// Add environment variables from AiGateway spec
+	// User-provided Env Vars override generated Env Vars
+	for _, env := range aiGateway.Spec.Env {
+		envMap[env.Name] = env
+	}
+
+	// Convert map to slice
+	envVars := make([]corev1.EnvVar, 0, len(envMap))
+	for _, env := range envMap {
+		envVars = append(envVars, env)
+	}
+	return envVars
+}
+
+func (r *AiGatewayReconciler) generateApiKeyEnvVars(aiGateway *gatewayv1alpha1.AiGateway, envMap map[string]corev1.EnvVar) {
 	// Add API key environment variables for each model
 	// We need to determine what API keys are needed based on the models
 	apiKeyEnvVars := make(map[string]bool)
@@ -597,7 +614,7 @@ func (r *AiGatewayReconciler) buildEnvironmentVariables(aiGateway *gatewayv1alph
 
 	// Add environment variables from secret for each API key
 	for envVarName := range apiKeyEnvVars {
-		envVars = append(envVars, corev1.EnvVar{
+		envMap[envVarName] = corev1.EnvVar{
 			Name: envVarName,
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
@@ -608,13 +625,8 @@ func (r *AiGatewayReconciler) buildEnvironmentVariables(aiGateway *gatewayv1alph
 					Optional: &[]bool{true}[0], // Make optional so deployment doesn't fail if secret missing
 				},
 			},
-		})
+		}
 	}
-
-	// Add environment variables from AiGateway spec
-	envVars = append(envVars, aiGateway.Spec.Env...)
-
-	return envVars
 }
 
 // updateCondition updates or adds a condition to the AiGateway status
