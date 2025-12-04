@@ -14,8 +14,11 @@ spec:
       name: gemini-2.5-flash
   # Optional: Add custom environment variables
   # env:
-  #   - name: LITELLM_LOG
-  #     value: DEBUG
+  #   # Configure OpenTelemetry endpoint for distributed tracing
+  #   - name: OTEL_EXPORTER_OTLP_ENDPOINT
+  #     value: http://otel-collector:4318
+  #   - name: OTEL_EXPORTER_OTLP_PROTOCOL
+  #     value: http/json
   # Optional: Load environment variables from ConfigMaps or Secrets
   # envFrom:
   #   - configMapRef:
