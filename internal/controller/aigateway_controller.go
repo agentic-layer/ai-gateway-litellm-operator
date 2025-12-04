@@ -375,7 +375,7 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 					Containers: []corev1.Container{
 						{
 							Name:  liteLLMContainerName,
-							Image: "ghcr.io/berriai/litellm:v1.77.2-stable",
+							Image: "ghcr.io/berriai/litellm:v1.80.5-stable",
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "http",
