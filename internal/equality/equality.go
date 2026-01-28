@@ -83,3 +83,8 @@ func EnvFromEqual(existing, desired []corev1.EnvFromSource) bool {
 	}
 	return cmp.Equal(existing, desired, cmpopts.SortSlices(sortFunc))
 }
+
+// ResourceRequirementsEqual compares resource requirements for equality.
+func ResourceRequirementsEqual(existing, desired corev1.ResourceRequirements) bool {
+	return cmp.Equal(existing, desired)
+}

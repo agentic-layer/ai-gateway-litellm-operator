@@ -30,6 +30,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -399,6 +400,16 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 							},
 							Env:     r.buildEnvironmentVariables(aiGateway),
 							EnvFrom: aiGateway.Spec.EnvFrom,
+							Resources: corev1.ResourceRequirements{
+								Requests: corev1.ResourceList{
+									corev1.ResourceMemory: resource.MustParse("250M"),
+									corev1.ResourceCPU:    resource.MustParse("100m"),
+								},
+								Limits: corev1.ResourceList{
+									corev1.ResourceMemory: resource.MustParse("400M"),
+									corev1.ResourceCPU:    resource.MustParse("500m"),
+								},
+							},
 						},
 					},
 					Volumes: []corev1.Volume{
@@ -477,6 +488,11 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 			if existingPorts[0].ContainerPort != newPorts[0].ContainerPort {
 				needsUpdate = true
 			}
+		}
+
+		// Check resource requirements changes
+		if !equality.ResourceRequirementsEqual(existingContainer.Resources, desiredContainer.Resources) {
+			needsUpdate = true
 		}
 	}
 
