@@ -15,7 +15,7 @@ namePrefix: ai-gateway-litellm-
 #    someName: someValue
 
 resources:
-- ../crd
+#- ../crd
 - ../rbac
 - ../manager
 - ../install
