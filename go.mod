@@ -3,7 +3,7 @@ module github.com/agentic-layer/ai-gateway-litellm
 go 1.24.0
 
 require (
-	github.com/agentic-layer/agent-runtime-operator v0.17.0
+	github.com/agentic-layer/agent-runtime-operator v0.17.2
 	github.com/google/go-cmp v0.7.0
 	github.com/onsi/ginkgo/v2 v2.27.5
 	github.com/onsi/gomega v1.39.0
