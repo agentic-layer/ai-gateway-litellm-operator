@@ -410,6 +410,8 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 									corev1.ResourceCPU:    resource.MustParse("500m"),
 								},
 							},
+							// LiteLLM health check endpoints: /health/liveliness and /health/readiness
+							// Note: LiteLLM uses "liveliness" (not "liveness") in their API
 							LivenessProbe: &corev1.Probe{
 								ProbeHandler: corev1.ProbeHandler{
 									HTTPGet: &corev1.HTTPGetAction{
