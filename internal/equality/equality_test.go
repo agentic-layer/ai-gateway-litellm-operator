@@ -22,6 +22,7 @@ import (
 	"github.com/agentic-layer/agent-runtime-operator/api/v1alpha1"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/equality"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func TestAiModelsEqual(t *testing.T) {
@@ -299,6 +300,130 @@ func TestRequiredLabelsPresent(t *testing.T) {
 			got := equality.RequiredLabelsPresent(tc.existing, tc.required)
 			if got != tc.want {
 				t.Errorf("RequiredLabelsPresent() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestProbesEqual(t *testing.T) {
+	testCases := []struct {
+		name string
+		a    *corev1.Probe
+		b    *corev1.Probe
+		want bool
+	}{
+		{
+			name: "should be equal for identical probes",
+			a: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/health",
+						Port: intstr.FromInt(8080),
+					},
+				},
+				InitialDelaySeconds: 10,
+				PeriodSeconds:       5,
+			},
+			b: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/health",
+						Port: intstr.FromInt(8080),
+					},
+				},
+				InitialDelaySeconds: 10,
+				PeriodSeconds:       5,
+			},
+			want: true,
+		},
+		{
+			name: "should be equal for nil probes",
+			a:    nil,
+			b:    nil,
+			want: true,
+		},
+		{
+			name: "should not be equal for different paths",
+			a: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/health",
+						Port: intstr.FromInt(8080),
+					},
+				},
+			},
+			b: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/ready",
+						Port: intstr.FromInt(8080),
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "should not be equal for different ports",
+			a: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/health",
+						Port: intstr.FromInt(8080),
+					},
+				},
+			},
+			b: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/health",
+						Port: intstr.FromInt(9090),
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "should not be equal for different timing parameters",
+			a: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/health",
+						Port: intstr.FromInt(8080),
+					},
+				},
+				InitialDelaySeconds: 10,
+			},
+			b: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/health",
+						Port: intstr.FromInt(8080),
+					},
+				},
+				InitialDelaySeconds: 15,
+			},
+			want: false,
+		},
+		{
+			name: "should not be equal for nil vs non-nil probe",
+			a:    nil,
+			b: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/health",
+						Port: intstr.FromInt(8080),
+					},
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := equality.ProbesEqual(tc.a, tc.b)
+			if got != tc.want {
+				t.Errorf("ProbesEqual() = %v, want %v", got, tc.want)
 			}
 		})
 	}
