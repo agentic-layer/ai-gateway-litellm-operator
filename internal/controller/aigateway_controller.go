@@ -410,6 +410,30 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 									corev1.ResourceCPU:    resource.MustParse("500m"),
 								},
 							},
+							LivenessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Path: "/health/liveliness",
+										Port: intstr.FromInt32(aiGateway.Spec.Port),
+									},
+								},
+								InitialDelaySeconds: 15,
+								PeriodSeconds:       10,
+								TimeoutSeconds:      5,
+								FailureThreshold:    3,
+							},
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Path: "/health/readiness",
+										Port: intstr.FromInt32(aiGateway.Spec.Port),
+									},
+								},
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       10,
+								TimeoutSeconds:      5,
+								FailureThreshold:    3,
+							},
 						},
 					},
 					Volumes: []corev1.Volume{
@@ -492,6 +516,16 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 
 		// Check resource requirements changes
 		if !equality.ResourceRequirementsEqual(existingContainer.Resources, desiredContainer.Resources) {
+			needsUpdate = true
+		}
+
+		// Check liveness probe changes
+		if !equality.ProbesEqual(existingContainer.LivenessProbe, desiredContainer.LivenessProbe) {
+			needsUpdate = true
+		}
+
+		// Check readiness probe changes
+		if !equality.ProbesEqual(existingContainer.ReadinessProbe, desiredContainer.ReadinessProbe) {
 			needsUpdate = true
 		}
 	}
