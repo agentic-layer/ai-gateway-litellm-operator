@@ -88,3 +88,8 @@ func EnvFromEqual(existing, desired []corev1.EnvFromSource) bool {
 func ResourceRequirementsEqual(existing, desired corev1.ResourceRequirements) bool {
 	return cmp.Equal(existing, desired)
 }
+
+// ProbesEqual compares probe configurations for equality.
+func ProbesEqual(existing, desired *corev1.Probe) bool {
+	return cmp.Equal(existing, desired)
+}
