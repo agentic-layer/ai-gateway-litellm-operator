@@ -4,6 +4,8 @@ github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/agentic-layer/agent-runtime-operator v0.17.2 h1:wA7gQiRHeDThHs+p6C20P0CgPuGiiWVwQAb+mP4Hc+E=
 github.com/agentic-layer/agent-runtime-operator v0.17.2/go.mod h1:JWI/khyJr0JVVgm8SGrz0WbLiCLh/LeipweoTu/UUDg=
+github.com/agentic-layer/agent-runtime-operator v0.18.0 h1:K5CHQl4o0tzszv4VKmFl820VzvMnjez2j7md86vcYt4=
+github.com/agentic-layer/agent-runtime-operator v0.18.0/go.mod h1:zr4Bp82PxsgjvLZ5OmVBLTvwO+7zM6ODKy9otG3bN4U=
 github.com/antlr4-go/antlr/v4 v4.13.0 h1:lxCg3LAv+EUK6t1i0y1V6/SLeUi0eKEKdhQAlS8TVTI=
 github.com/antlr4-go/antlr/v4 v4.13.0/go.mod h1:pfChB/xh/Unjila75QW7+VU4TSnWnnk9UTnmpPaOR2g=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 h1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=
