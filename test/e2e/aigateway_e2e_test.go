@@ -56,7 +56,7 @@ var _ = Describe("AiGateway", Ordered, func() {
 		Eventually(func(g Gomega) {
 			var statusCode int
 			var err error
-			body, statusCode, err = utils.MakeServiceGet("default", "my-litellm", 4000, "/models")
+			body, statusCode, err = utils.MakeServiceGet("default", "my-litellm", 80, "/models")
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(statusCode).To(Equal(200))
 		}, 2*time.Minute, 5*time.Second).Should(Succeed(), "Failed to query /models endpoint")
@@ -88,7 +88,7 @@ var _ = Describe("AiGateway", Ordered, func() {
 			var body []byte
 			var statusCode int
 			var err error
-			body, statusCode, err = utils.MakeServiceGet("default", "my-litellm", 4000, "/")
+			body, statusCode, err = utils.MakeServiceGet("default", "my-litellm", 80, "/")
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(statusCode).To(Equal(200))
 
