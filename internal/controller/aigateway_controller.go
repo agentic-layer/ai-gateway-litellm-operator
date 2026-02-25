@@ -41,6 +41,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const (
+	litellmImage = "ghcr.io/berriai/litellm:v1.81.12-stable.1"
+)
+
 // Status condition types
 const (
 	// AiGatewayConfigured indicates if the AiGateway configuration is valid
@@ -376,7 +380,7 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 					Containers: []corev1.Container{
 						{
 							Name:  liteLLMContainerName,
-							Image: "ghcr.io/berriai/litellm:v1.80.5-stable",
+							Image: litellmImage,
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "http",
