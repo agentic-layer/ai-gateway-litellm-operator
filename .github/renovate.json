@@ -1,5 +1,11 @@
 {
   "extends": [
     "github>agentic-layer/renovate-config"
+  ],
+  "packageRules": [
+    {
+      "matchPackageNames": ["example.com/ai-gateway-litellm"],
+      "enabled": false
+    }
   ]
 }
