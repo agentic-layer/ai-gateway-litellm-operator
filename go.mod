@@ -1,6 +1,6 @@
 module github.com/agentic-layer/ai-gateway-litellm
 
-go 1.24.0
+go 1.26.0
 
 require (
 	github.com/agentic-layer/agent-runtime-operator v0.18.2
