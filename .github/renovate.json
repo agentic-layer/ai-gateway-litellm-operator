@@ -7,5 +7,18 @@
       "matchPackageNames": ["example.com/ai-gateway-litellm"],
       "enabled": false
     }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^internal/controller/aigateway_controller\\.go$/"
+      ],
+      "matchStrings": [
+        "litellmImage\\s*=\\s*\"(?<depName>ghcr\\.io/berriai/[^:]+):(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "semver"
+    }
   ]
 }
