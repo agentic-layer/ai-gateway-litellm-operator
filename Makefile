@@ -3,7 +3,7 @@
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= $(shell git describe --tags --always | sed 's/^v//')
+VERSION ?= 0.0.1
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
@@ -50,7 +50,7 @@ endif
 
 # Set the Operator SDK version to use. By default, what is installed on the system is used.
 # This is useful for CI or a project to utilize a specific version of the operator-sdk toolkit.
-OPERATOR_SDK_VERSION ?= v1.41.1
+OPERATOR_SDK_VERSION ?= v1.42.0
 # Image URL to use all building/pushing image targets
 IMG ?= $(IMAGE_TAG_BASE):$(VERSION)
 
@@ -115,8 +115,6 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
-# CertManager is installed by default; skip with:
-# - CERT_MANAGER_INSTALL_SKIP=true
 KIND_CLUSTER ?= ai-gateway-litellm-test-e2e
 
 .PHONY: setup-test-e2e
@@ -127,7 +125,8 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 	}
 	@case "$$($(KIND) get clusters)" in \
 		*"$(KIND_CLUSTER)"*) \
-			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
+			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation and using context." ; \
+			$(KUBECTL) config use-context kind-$(KIND_CLUSTER) ;; \
 		*) \
 			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
 			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
@@ -136,7 +135,6 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 .PHONY: test-e2e
 test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
 	KIND_CLUSTER=$(KIND_CLUSTER) go test ./test/e2e/ -v -ginkgo.v
-	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
@@ -253,12 +251,13 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.6.0
-CONTROLLER_TOOLS_VERSION ?= v0.18.0
+CONTROLLER_TOOLS_VERSION ?= v0.20.1
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
-GOLANGCI_LINT_VERSION ?= v2.1.0
+GOLANGCI_LINT_VERSION ?= v2.10.1
+AGENT_RUNTIME_VERSION ?= $(shell go list -m -f "{{ .Version }}" github.com/agentic-layer/agent-runtime-operator)
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -383,26 +382,25 @@ kind-load:
 
 
 ## Agent Runtime CRD configuration
-AGENT_RUNTIME_CRD_VERSION ?= 0.12.0
 AGENT_RUNTIME_CRD_DIR = config/crd/external
-AGENT_RUNTIME_CRD_BASE_URL = https://raw.githubusercontent.com/agentic-layer/agent-runtime-operator/refs/tags/v$(AGENT_RUNTIME_CRD_VERSION)/config/crd/bases
+AGENT_RUNTIME_CRD_BASE_URL = https://raw.githubusercontent.com/agentic-layer/agent-runtime-operator/refs/tags/$(AGENT_RUNTIME_VERSION)/config/crd/bases
 AGENT_RUNTIME_CRD_FILES = runtime.agentic-layer.ai_aigateways.yaml runtime.agentic-layer.ai_aigatewayclasses.yaml
 AGENT_RUNTIME_CRDS = $(addprefix $(AGENT_RUNTIME_CRD_DIR)/,$(AGENT_RUNTIME_CRD_FILES))
-AGENT_RUNTIME_CRD_VERSION_FILE = $(AGENT_RUNTIME_CRD_DIR)/.version
+AGENT_RUNTIME_VERSION_FILE = $(AGENT_RUNTIME_CRD_DIR)/.version
 
 ## Download Agent Runtime CRDs from upstream repository
 .PHONY: agent-runtime-crds
 agent-runtime-crds: $(AGENT_RUNTIME_CRDS)
 
-$(AGENT_RUNTIME_CRD_DIR)/%.yaml: $(AGENT_RUNTIME_CRD_VERSION_FILE)
-	@echo "Downloading $(notdir $@) version $(AGENT_RUNTIME_CRD_VERSION)..."
+$(AGENT_RUNTIME_CRD_DIR)/%.yaml: $(AGENT_RUNTIME_VERSION_FILE)
+	@echo "Downloading $(notdir $@) version $(AGENT_RUNTIME_VERSION)..."
 	@curl -sSLf -o $@ $(AGENT_RUNTIME_CRD_BASE_URL)/$(notdir $@)
 
-$(AGENT_RUNTIME_CRD_VERSION_FILE): FORCE
-	@if [ ! -f $@ ] || [ "$$(cat $@)" != "$(AGENT_RUNTIME_CRD_VERSION)" ]; then \
-		echo "Version changed to $(AGENT_RUNTIME_CRD_VERSION), removing old CRDs..."; \
+$(AGENT_RUNTIME_VERSION_FILE): FORCE
+	@if [ ! -f $@ ] || [ "$$(cat $@)" != "$(AGENT_RUNTIME_VERSION)" ]; then \
+		echo "Version changed to $(AGENT_RUNTIME_VERSION), removing old CRDs..."; \
 		rm -f $(AGENT_RUNTIME_CRDS); \
-		echo "$(AGENT_RUNTIME_CRD_VERSION)" > $@; \
+		echo "$(AGENT_RUNTIME_VERSION)" > $@; \
 	fi
 
 .PHONY: FORCE
