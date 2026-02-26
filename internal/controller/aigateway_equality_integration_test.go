@@ -231,3 +231,39 @@ func TestEqualityWithAiGatewayController(t *testing.T) {
 		}
 	})
 }
+
+// TestGetEffectivePort tests the getEffectivePort helper function
+func TestGetEffectivePort(t *testing.T) {
+	t.Run("should return default port when port is 0", func(t *testing.T) {
+		result := getEffectivePort(0)
+		if result != DefaultPort {
+			t.Errorf("Expected default port %d when port is 0, got %d", DefaultPort, result)
+		}
+	})
+
+	t.Run("should return the specified port when non-zero", func(t *testing.T) {
+		testPort := int32(8080)
+		result := getEffectivePort(testPort)
+		if result != testPort {
+			t.Errorf("Expected port %d, got %d", testPort, result)
+		}
+	})
+
+	t.Run("should return the specified port for port 80", func(t *testing.T) {
+		// Even though 80 is the CRD default, if explicitly set, it should be used
+		testPort := int32(80)
+		result := getEffectivePort(testPort)
+		if result != testPort {
+			t.Errorf("Expected port %d, got %d", testPort, result)
+		}
+	})
+
+	t.Run("should return the specified port for port 4000", func(t *testing.T) {
+		// When port is set to 4000 (same as DefaultPort), it should still return it
+		testPort := int32(4000)
+		result := getEffectivePort(testPort)
+		if result != testPort {
+			t.Errorf("Expected port %d, got %d", testPort, result)
+		}
+	})
+}

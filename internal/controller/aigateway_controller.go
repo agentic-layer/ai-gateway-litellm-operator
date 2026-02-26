@@ -59,6 +59,11 @@ const (
 	// DefaultRequestTimeout is the default timeout for LiteLLM requests in seconds
 	DefaultRequestTimeout = 600
 
+	// DefaultPort is the default port for the AI Gateway when not explicitly specified.
+	// This allows the operator to change the default port without requiring updates to existing CRs.
+	// Set to 4000 which is LiteLLM's default port.
+	DefaultPort = 4000
+
 	// liteLLMContainerName is the name of the LiteLLM container in the deployment
 	liteLLMContainerName = "litellm"
 )
@@ -105,6 +110,16 @@ type LiteLLMSettings struct {
 type AiGatewayReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+}
+
+// getEffectivePort returns the port to use for the AI Gateway.
+// If the port is 0 (not set), it returns the DefaultPort.
+// This allows the operator to change the default port without requiring updates to existing CRs.
+func getEffectivePort(port int32) int32 {
+	if port == 0 {
+		return DefaultPort
+	}
+	return port
 }
 
 // +kubebuilder:rbac:groups=runtime.agentic-layer.ai,resources=aigateways,verbs=get;list;watch;create;update;patch;delete
@@ -384,7 +399,7 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "http",
-									ContainerPort: aiGateway.Spec.Port,
+									ContainerPort: getEffectivePort(aiGateway.Spec.Port),
 									Protocol:      corev1.ProtocolTCP,
 								},
 							},
@@ -400,7 +415,7 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 								"--config",
 								"/app/config/config.yaml",
 								"--port",
-								strconv.Itoa(int(aiGateway.Spec.Port)),
+								strconv.Itoa(int(getEffectivePort(aiGateway.Spec.Port))),
 							},
 							Env:     r.buildEnvironmentVariables(aiGateway),
 							EnvFrom: aiGateway.Spec.EnvFrom,
@@ -420,7 +435,7 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 								ProbeHandler: corev1.ProbeHandler{
 									HTTPGet: &corev1.HTTPGetAction{
 										Path: "/health/liveliness",
-										Port: intstr.FromInt32(aiGateway.Spec.Port),
+										Port: intstr.FromInt32(getEffectivePort(aiGateway.Spec.Port)),
 									},
 								},
 								InitialDelaySeconds: 15,
@@ -432,7 +447,7 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 								ProbeHandler: corev1.ProbeHandler{
 									HTTPGet: &corev1.HTTPGetAction{
 										Path: "/health/readiness",
-										Port: intstr.FromInt32(aiGateway.Spec.Port),
+										Port: intstr.FromInt32(getEffectivePort(aiGateway.Spec.Port)),
 									},
 								},
 								InitialDelaySeconds: 5,
@@ -589,8 +604,8 @@ func (r *AiGatewayReconciler) reconcileService(ctx context.Context, aiGateway *g
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "http",
-					Port:       aiGateway.Spec.Port,
-					TargetPort: intstr.FromInt32(aiGateway.Spec.Port),
+					Port:       getEffectivePort(aiGateway.Spec.Port),
+					TargetPort: intstr.FromInt32(getEffectivePort(aiGateway.Spec.Port)),
 					Protocol:   corev1.ProtocolTCP,
 				},
 			},
