@@ -354,15 +354,17 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 	log := logf.FromContext(ctx)
 
 	replicas := int32(1)
-	labels := map[string]string{
-		"app": aiGateway.Name,
-	}
+	deploymentLabels := buildResourceLabels(aiGateway)
+	deploymentAnnotations := buildResourceAnnotations(aiGateway)
+	podTemplateLabels := buildPodTemplateLabels(aiGateway)
+	podTemplateAnnotations := buildPodTemplateAnnotations(aiGateway, configHash)
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      aiGateway.Name,
-			Namespace: aiGateway.Namespace,
-			Labels:    labels,
+			Name:        aiGateway.Name,
+			Namespace:   aiGateway.Namespace,
+			Labels:      deploymentLabels,
+			Annotations: deploymentAnnotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
@@ -373,10 +375,8 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
-					Annotations: map[string]string{
-						"gateway.agentic-layer.ai/config-hash": configHash,
-					},
+					Labels:      podTemplateLabels,
+					Annotations: podTemplateAnnotations,
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
@@ -480,14 +480,18 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 	// Update if needed using equality utilities
 	needsUpdate := !equality.RequiredLabelsPresent(existing.Labels, deployment.Labels)
 
+	// Check deployment annotations for changes
+	if !equality.RequiredLabelsPresent(existing.Annotations, deployment.Annotations) {
+		needsUpdate = true
+	}
+
 	// Check template labels for changes
 	if !equality.RequiredLabelsPresent(existing.Spec.Template.Labels, deployment.Spec.Template.Labels) {
 		needsUpdate = true
 	}
 
-	// Check template annotations for config hash changes
-	if existing.Spec.Template.Annotations == nil ||
-		existing.Spec.Template.Annotations["gateway.agentic-layer.ai/config-hash"] != configHash {
+	// Check template annotations for changes (includes config hash and user-provided annotations)
+	if !equality.RequiredLabelsPresent(existing.Spec.Template.Annotations, deployment.Spec.Template.Annotations) {
 		needsUpdate = true
 	}
 
@@ -547,6 +551,15 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 		for key, value := range deployment.Labels {
 			existing.Labels[key] = value
 		}
+		// Update deployment annotations
+		if deployment.Annotations != nil {
+			if existing.Annotations == nil {
+				existing.Annotations = make(map[string]string)
+			}
+			for key, value := range deployment.Annotations {
+				existing.Annotations[key] = value
+			}
+		}
 		// Update template labels and annotations
 		if existing.Spec.Template.Labels == nil {
 			existing.Spec.Template.Labels = make(map[string]string)
@@ -574,15 +587,15 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 func (r *AiGatewayReconciler) reconcileService(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway) error {
 	log := logf.FromContext(ctx)
 
-	labels := map[string]string{
-		"app": aiGateway.Name,
-	}
+	serviceLabels := buildResourceLabels(aiGateway)
+	serviceAnnotations := buildResourceAnnotations(aiGateway)
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      aiGateway.Name,
-			Namespace: aiGateway.Namespace,
-			Labels:    labels,
+			Name:        aiGateway.Name,
+			Namespace:   aiGateway.Namespace,
+			Labels:      serviceLabels,
+			Annotations: serviceAnnotations,
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
@@ -619,6 +632,11 @@ func (r *AiGatewayReconciler) reconcileService(ctx context.Context, aiGateway *g
 	// Update if needed using equality utilities
 	needsUpdate := !equality.RequiredLabelsPresent(existing.Labels, service.Labels)
 
+	// Check service annotations for changes
+	if !equality.RequiredLabelsPresent(existing.Annotations, service.Annotations) {
+		needsUpdate = true
+	}
+
 	// Check ports for changes (safe checking)
 	if len(existing.Spec.Ports) > 0 && len(service.Spec.Ports) > 0 &&
 		existing.Spec.Ports[0].Port != service.Spec.Ports[0].Port {
@@ -634,6 +652,15 @@ func (r *AiGatewayReconciler) reconcileService(ctx context.Context, aiGateway *g
 		}
 		for key, value := range service.Labels {
 			existing.Labels[key] = value
+		}
+		// Update service annotations
+		if service.Annotations != nil {
+			if existing.Annotations == nil {
+				existing.Annotations = make(map[string]string)
+			}
+			for key, value := range service.Annotations {
+				existing.Annotations[key] = value
+			}
 		}
 		return r.Update(ctx, existing)
 	}
@@ -722,6 +749,70 @@ func (r *AiGatewayReconciler) updateStatus(ctx context.Context, aiGateway *gatew
 		return statusErr
 	}
 	return nil
+}
+
+// buildResourceLabels builds labels for Deployment/Service ObjectMeta:
+// user commonMetadata.Labels first, then the managed label ("app") always takes precedence.
+func buildResourceLabels(aiGateway *gatewayv1alpha1.AiGateway) map[string]string {
+	labels := make(map[string]string)
+	if aiGateway.Spec.CommonMetadata != nil {
+		for k, v := range aiGateway.Spec.CommonMetadata.Labels {
+			labels[k] = v
+		}
+	}
+	labels["app"] = aiGateway.Name
+	return labels
+}
+
+// buildResourceAnnotations builds annotations for Deployment/Service ObjectMeta from commonMetadata.
+// Returns nil if no annotations are configured.
+func buildResourceAnnotations(aiGateway *gatewayv1alpha1.AiGateway) map[string]string {
+	if aiGateway.Spec.CommonMetadata == nil || len(aiGateway.Spec.CommonMetadata.Annotations) == 0 {
+		return nil
+	}
+	annotations := make(map[string]string)
+	for k, v := range aiGateway.Spec.CommonMetadata.Annotations {
+		annotations[k] = v
+	}
+	return annotations
+}
+
+// buildPodTemplateLabels builds pod template labels:
+// commonMetadata.Labels + podMetadata.Labels (podMetadata overrides), then the selector label
+// ("app") always takes precedence.
+func buildPodTemplateLabels(aiGateway *gatewayv1alpha1.AiGateway) map[string]string {
+	labels := make(map[string]string)
+	if aiGateway.Spec.CommonMetadata != nil {
+		for k, v := range aiGateway.Spec.CommonMetadata.Labels {
+			labels[k] = v
+		}
+	}
+	if aiGateway.Spec.PodMetadata != nil {
+		for k, v := range aiGateway.Spec.PodMetadata.Labels {
+			labels[k] = v
+		}
+	}
+	labels["app"] = aiGateway.Name
+	return labels
+}
+
+// buildPodTemplateAnnotations builds pod template annotations:
+// commonMetadata.Annotations + podMetadata.Annotations (podMetadata overrides), then the
+// operator-managed config-hash annotation is always set last.
+func buildPodTemplateAnnotations(aiGateway *gatewayv1alpha1.AiGateway, configHash string) map[string]string {
+	annotations := make(map[string]string)
+	if aiGateway.Spec.CommonMetadata != nil {
+		for k, v := range aiGateway.Spec.CommonMetadata.Annotations {
+			annotations[k] = v
+		}
+	}
+	if aiGateway.Spec.PodMetadata != nil {
+		for k, v := range aiGateway.Spec.PodMetadata.Annotations {
+			annotations[k] = v
+		}
+	}
+	annotations["gateway.agentic-layer.ai/config-hash"] = configHash
+	return annotations
 }
 
 // SetupWithManager sets up the controller with the Manager.
