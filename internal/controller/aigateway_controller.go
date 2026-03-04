@@ -286,7 +286,7 @@ func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGat
 			RequestTimeout: DefaultRequestTimeout,
 			// 'callbacks: ["otel"]' is required to send traces to otel after handling incoming requests
 			// (see https://docs.litellm.ai/docs/proxy/logging#opentelemetry)
-			Callbacks: []string{"otel"},
+			Callbacks: []string{"otel", "prometheus"},
 		},
 	}
 
