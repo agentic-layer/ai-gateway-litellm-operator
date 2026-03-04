@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -38,7 +39,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
@@ -114,6 +117,7 @@ type AiGatewayReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
@@ -167,8 +171,20 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	// Step 4: Create/update Deployment
-	if err := r.reconcileDeployment(ctx, &aiGateway, configHash); err != nil {
+	// Step 4: Compute secret hash to detect API key changes
+	secretHash, err := r.computeSecretHash(ctx, &aiGateway)
+	if err != nil {
+		log.Error(err, "Failed to compute secret hash")
+		r.updateCondition(&aiGateway, AiGatewayConfigured, metav1.ConditionFalse,
+			"SecretHashFailed", fmt.Sprintf("Failed to compute secret hash: %v", err))
+		if err := r.updateStatus(ctx, &aiGateway); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, err
+	}
+
+	// Step 5: Create/update Deployment
+	if err := r.reconcileDeployment(ctx, &aiGateway, configHash, secretHash); err != nil {
 		log.Error(err, "Failed to reconcile Deployment")
 		r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionFalse,
 			"DeploymentFailed", fmt.Sprintf("Failed to create/update Deployment: %v", err))
@@ -178,7 +194,7 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	// Step 5: Create/update Service
+	// Step 6: Create/update Service
 	if err := r.reconcileService(ctx, &aiGateway); err != nil {
 		log.Error(err, "Failed to reconcile Service")
 		r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionFalse,
@@ -195,7 +211,7 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		ReasonAiGatewayReady, "AiGateway is ready and serving traffic")
 
 	log.Info("Successfully reconciled AiGateway", "name", aiGateway.Name,
-		"aiModels", len(aiGateway.Spec.AiModels), "configHash", configHash[:8])
+		"aiModels", len(aiGateway.Spec.AiModels), "configHash", configHash[:8], "secretHash", secretHash[:8])
 
 	if err := r.updateStatus(ctx, &aiGateway); err != nil {
 		return ctrl.Result{}, err
@@ -350,14 +366,14 @@ func (r *AiGatewayReconciler) reconcileConfigMap(ctx context.Context, aiGateway 
 }
 
 // reconcileDeployment creates or updates the Deployment for LiteLLM
-func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway, configHash string) error {
+func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway, configHash string, secretHash string) error {
 	log := logf.FromContext(ctx)
 
 	replicas := int32(1)
 	deploymentLabels := buildResourceLabels(aiGateway)
 	deploymentAnnotations := buildResourceAnnotations(aiGateway)
 	podTemplateLabels := buildPodTemplateLabels(aiGateway)
-	podTemplateAnnotations := buildPodTemplateAnnotations(aiGateway, configHash)
+	podTemplateAnnotations := buildPodTemplateAnnotations(aiGateway, configHash, secretHash)
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -718,6 +734,35 @@ func (r *AiGatewayReconciler) generateApiKeyEnvVars(aiGateway *gatewayv1alpha1.A
 	}
 }
 
+// computeSecretHash fetches the API keys secret and returns a hash of its data.
+// If the secret does not exist, an empty hash is returned so the deployment can still be created.
+func (r *AiGatewayReconciler) computeSecretHash(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway) (string, error) {
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{Name: DefaultSecretName, Namespace: aiGateway.Namespace}, secret)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Secret is optional; return a stable empty hash so the annotation is still set
+			empty := sha256.Sum256([]byte{})
+			return fmt.Sprintf("%x", empty)[:16], nil
+		}
+		return "", fmt.Errorf("failed to get secret %s: %w", DefaultSecretName, err)
+	}
+
+	// Sort keys for a deterministic hash
+	keys := make([]string, 0, len(secret.Data))
+	for k := range secret.Data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	h := sha256.New()
+	for _, k := range keys {
+		h.Write([]byte(k))
+		h.Write(secret.Data[k])
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))[:16], nil
+}
+
 // updateCondition updates or adds a condition to the AiGateway status
 func (r *AiGatewayReconciler) updateCondition(aiGateway *gatewayv1alpha1.AiGateway, conditionType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
@@ -798,8 +843,8 @@ func buildPodTemplateLabels(aiGateway *gatewayv1alpha1.AiGateway) map[string]str
 
 // buildPodTemplateAnnotations builds pod template annotations:
 // commonMetadata.Annotations + podMetadata.Annotations (podMetadata overrides), then the
-// operator-managed config-hash annotation is always set last.
-func buildPodTemplateAnnotations(aiGateway *gatewayv1alpha1.AiGateway, configHash string) map[string]string {
+// operator-managed config-hash and secret-hash annotations are always set last.
+func buildPodTemplateAnnotations(aiGateway *gatewayv1alpha1.AiGateway, configHash string, secretHash string) map[string]string {
 	annotations := make(map[string]string)
 	if aiGateway.Spec.CommonMetadata != nil {
 		for k, v := range aiGateway.Spec.CommonMetadata.Annotations {
@@ -812,6 +857,7 @@ func buildPodTemplateAnnotations(aiGateway *gatewayv1alpha1.AiGateway, configHas
 		}
 	}
 	annotations["gateway.agentic-layer.ai/config-hash"] = configHash
+	annotations["gateway.agentic-layer.ai/secret-hash"] = secretHash
 	return annotations
 }
 
@@ -822,6 +868,30 @@ func (r *AiGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
+		Watches(
+			&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+				// Only react to the default API-keys secret
+				if obj.GetName() != DefaultSecretName {
+					return nil
+				}
+				// Enqueue reconcile requests for all AiGateway objects in the same namespace
+				var aiGatewayList gatewayv1alpha1.AiGatewayList
+				if err := r.List(ctx, &aiGatewayList, client.InNamespace(obj.GetNamespace())); err != nil {
+					return nil
+				}
+				requests := make([]reconcile.Request, len(aiGatewayList.Items))
+				for i, gw := range aiGatewayList.Items {
+					requests[i] = reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Name:      gw.Name,
+							Namespace: gw.Namespace,
+						},
+					}
+				}
+				return requests
+			}),
+		).
 		Named(ControllerName).
 		Complete(r)
 }
