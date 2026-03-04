@@ -560,9 +560,13 @@ func checkDeploymentReconciled(ctx context.Context, namespacedName types.Namespa
 	Expect(container.Ports[0].Name).To(Equal("http"))
 
 	By("Verifying Deployment has ConfigMap volume mount")
-	Expect(container.VolumeMounts).To(HaveLen(1))
+	Expect(container.VolumeMounts).To(HaveLen(2))
 	Expect(container.VolumeMounts[0].Name).To(Equal("config"))
 	Expect(container.VolumeMounts[0].MountPath).To(Equal("/app/config"))
+
+	By("Verifying Deployment has prometheus multiproc volume mount")
+	Expect(container.VolumeMounts[1].Name).To(Equal("prometheus-multiproc"))
+	Expect(container.VolumeMounts[1].MountPath).To(Equal("/prometheus_multiproc"))
 
 	By("Verifying Deployment has owner reference")
 	Expect(deployment.OwnerReferences).To(HaveLen(1))

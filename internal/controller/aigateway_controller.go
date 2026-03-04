@@ -64,6 +64,12 @@ const (
 
 	// liteLLMContainerName is the name of the LiteLLM container in the deployment
 	liteLLMContainerName = "litellm"
+
+	// prometheusMultiprocVolumeName is the name of the emptyDir volume for prometheus multiprocess mode
+	prometheusMultiprocVolumeName = "prometheus-multiproc"
+
+	// prometheusMultiprocDir is the mount path for the prometheus multiprocess directory
+	prometheusMultiprocDir = "/prometheus_multiproc"
 )
 
 // Secret and API key constants
@@ -412,6 +418,10 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 									MountPath: "/app/config",
 									ReadOnly:  true,
 								},
+								{
+									Name:      prometheusMultiprocVolumeName,
+									MountPath: prometheusMultiprocDir,
+								},
 							},
 							Command: []string{
 								"litellm",
@@ -469,6 +479,12 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 										Name: fmt.Sprintf("%s-config", aiGateway.Name),
 									},
 								},
+							},
+						},
+						{
+							Name: prometheusMultiprocVolumeName,
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{},
 							},
 						},
 					},
@@ -689,6 +705,13 @@ func (r *AiGatewayReconciler) buildEnvironmentVariables(aiGateway *gatewayv1alph
 	envMap := make(map[string]corev1.EnvVar)
 
 	r.generateApiKeyEnvVars(aiGateway, envMap)
+
+	// Required for prometheus callback to work with multiple workers
+	// (see https://docs.litellm.ai/docs/proxy/prometheus)
+	envMap["PROMETHEUS_MULTIPROC_DIR"] = corev1.EnvVar{
+		Name:  "PROMETHEUS_MULTIPROC_DIR",
+		Value: prometheusMultiprocDir,
+	}
 
 	// Add environment variables from AiGateway spec
 	// User-provided Env Vars override generated Env Vars
