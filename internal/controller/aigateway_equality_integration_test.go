@@ -17,11 +17,16 @@ limitations under the License.
 package controller
 
 import (
+	"context"
 	"testing"
 
 	gatewayv1alpha1 "github.com/agentic-layer/agent-runtime-operator/api/v1alpha1"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/equality"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 // TestEqualityIntegrationWithController tests that the controller can use equality utilities
@@ -181,8 +186,146 @@ func TestEqualityIntegrationWithController(t *testing.T) {
 	})
 }
 
-// TestEqualityWithAiGatewayController tests that the equality utilities work correctly
-// with the actual controller reconciliation patterns
+// TestBuildPodTemplateAnnotationsWithSecretHash tests that buildPodTemplateAnnotations
+// includes the secret-hash annotation in addition to the config-hash annotation.
+func TestBuildPodTemplateAnnotationsWithSecretHash(t *testing.T) {
+	aiGateway := &gatewayv1alpha1.AiGateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-gateway",
+			Namespace: "default",
+		},
+		Spec: gatewayv1alpha1.AiGatewaySpec{
+			Port: 4000,
+		},
+	}
+
+	configHash := "abcd1234efgh5678"
+	secretHash := "1111222233334444"
+
+	annotations := buildPodTemplateAnnotations(aiGateway, configHash, secretHash)
+
+	if annotations["gateway.agentic-layer.ai/config-hash"] != configHash {
+		t.Errorf("Expected config-hash %q, got %q", configHash, annotations["gateway.agentic-layer.ai/config-hash"])
+	}
+	if annotations["gateway.agentic-layer.ai/secret-hash"] != secretHash {
+		t.Errorf("Expected secret-hash %q, got %q", secretHash, annotations["gateway.agentic-layer.ai/secret-hash"])
+	}
+}
+
+// TestBuildPodTemplateAnnotationsSecretHashOverridesUserAnnotations tests that the operator-managed
+// secret-hash annotation always takes precedence over user-provided annotations.
+func TestBuildPodTemplateAnnotationsSecretHashOverridesUserAnnotations(t *testing.T) {
+	aiGateway := &gatewayv1alpha1.AiGateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-gateway",
+			Namespace: "default",
+		},
+		Spec: gatewayv1alpha1.AiGatewaySpec{
+			Port: 4000,
+			PodMetadata: &gatewayv1alpha1.EmbeddedMetadata{
+				Annotations: map[string]string{
+					"gateway.agentic-layer.ai/secret-hash": "user-provided-value",
+					"custom-annotation":                    "custom-value",
+				},
+			},
+		},
+	}
+
+	secretHash := "operator-managed-hash"
+	annotations := buildPodTemplateAnnotations(aiGateway, "somehash", secretHash)
+
+	// Operator-managed secret-hash must take precedence
+	if annotations["gateway.agentic-layer.ai/secret-hash"] != secretHash {
+		t.Errorf("Operator-managed secret-hash should override user annotation; got %q", annotations["gateway.agentic-layer.ai/secret-hash"])
+	}
+	// User annotation is preserved
+	if annotations["custom-annotation"] != "custom-value" {
+		t.Error("User-provided custom annotation should be preserved")
+	}
+}
+
+// TestComputeSecretHashNoSecret tests that computeSecretHash returns a stable hash
+// when the secret does not exist.
+func TestComputeSecretHashNoSecret(t *testing.T) {
+	s := runtime.NewScheme()
+	if err := scheme.AddToScheme(s); err != nil {
+		t.Fatalf("Failed to add core scheme: %v", err)
+	}
+	if err := gatewayv1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("Failed to add gateway scheme: %v", err)
+	}
+
+	fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+	reconciler := &AiGatewayReconciler{Client: fakeClient, Scheme: s}
+
+	aiGateway := &gatewayv1alpha1.AiGateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "default"},
+	}
+
+	hash1, err := reconciler.computeSecretHash(context.Background(), aiGateway)
+	if err != nil {
+		t.Fatalf("Expected no error when secret is missing, got: %v", err)
+	}
+	hash2, err := reconciler.computeSecretHash(context.Background(), aiGateway)
+	if err != nil {
+		t.Fatalf("Expected no error on second call, got: %v", err)
+	}
+	if hash1 != hash2 {
+		t.Errorf("Expected stable hash for missing secret, got %q and %q", hash1, hash2)
+	}
+	if len(hash1) != 16 {
+		t.Errorf("Expected hash length 16, got %d", len(hash1))
+	}
+}
+
+// TestComputeSecretHashWithSecret tests that computeSecretHash changes when secret data changes.
+func TestComputeSecretHashWithSecret(t *testing.T) {
+	s := runtime.NewScheme()
+	if err := scheme.AddToScheme(s); err != nil {
+		t.Fatalf("Failed to add core scheme: %v", err)
+	}
+	if err := gatewayv1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("Failed to add gateway scheme: %v", err)
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      DefaultSecretName,
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"OPENAI_API_KEY": []byte("key-v1"),
+		},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(secret).Build()
+	reconciler := &AiGatewayReconciler{Client: fakeClient, Scheme: s}
+
+	aiGateway := &gatewayv1alpha1.AiGateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "default"},
+	}
+
+	hash1, err := reconciler.computeSecretHash(context.Background(), aiGateway)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	// Update the secret
+	secret.Data["OPENAI_API_KEY"] = []byte("key-v2")
+	fakeClient2 := fake.NewClientBuilder().WithScheme(s).WithObjects(secret).Build()
+	reconciler2 := &AiGatewayReconciler{Client: fakeClient2, Scheme: s}
+
+	hash2, err := reconciler2.computeSecretHash(context.Background(), aiGateway)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if hash1 == hash2 {
+		t.Error("Expected hash to change when secret data changes")
+	}
+	if len(hash1) != 16 || len(hash2) != 16 {
+		t.Errorf("Expected hash length 16, got %d and %d", len(hash1), len(hash2))
+	}
+}
 func TestEqualityWithAiGatewayController(t *testing.T) {
 	t.Run("controller update decision logic uses equality utilities", func(t *testing.T) {
 		// Create a scenario that simulates what the controller does
