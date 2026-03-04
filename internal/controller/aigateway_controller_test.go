@@ -271,6 +271,184 @@ var _ = Describe("AiGateway Controller", func() {
 		})
 	})
 
+	Context("When reconciling an AiGateway with commonMetadata", func() {
+		var aiGateway *gatewayv1alpha1.AiGateway
+		var gatewayNamespacedName types.NamespacedName
+		var classNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			gatewayNamespacedName = types.NamespacedName{Name: "test-gateway-with-common-metadata", Namespace: testNamespace}
+			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName, Namespace: testNamespace}
+
+			createDefaultClass(classNamespacedName)
+
+			By("Creating an AiGateway with commonMetadata")
+			aiGateway = &gatewayv1alpha1.AiGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      gatewayNamespacedName.Name,
+					Namespace: testNamespace,
+				},
+				Spec: gatewayv1alpha1.AiGatewaySpec{
+					Port: testPort,
+					AiModels: []gatewayv1alpha1.AiModel{
+						{Name: "gpt-3.5-turbo", Provider: "openai"},
+					},
+					CommonMetadata: &gatewayv1alpha1.EmbeddedMetadata{
+						Labels: map[string]string{
+							"team":        "platform",
+							"environment": "prod",
+						},
+						Annotations: map[string]string{
+							"prometheus.io/scrape": "true",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, aiGateway)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			cleanupAiGateway(gatewayNamespacedName)
+			cleanupAiGatewayClass(classNamespacedName)
+		})
+
+		It("should propagate commonMetadata labels and annotations to Deployment and Service", func() {
+			By("Reconciling the created resource")
+			reconciler := &AiGatewayReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: gatewayNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal(reconcile.Result{}))
+
+			By("Verifying Deployment has commonMetadata labels")
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, gatewayNamespacedName, deployment)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(deployment.Labels).To(HaveKeyWithValue("team", "platform"))
+			Expect(deployment.Labels).To(HaveKeyWithValue("environment", "prod"))
+			Expect(deployment.Labels).To(HaveKeyWithValue("app", gatewayNamespacedName.Name))
+
+			By("Verifying Deployment has commonMetadata annotations")
+			Expect(deployment.Annotations).To(HaveKeyWithValue("prometheus.io/scrape", "true"))
+
+			By("Verifying pod template has commonMetadata labels")
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("team", "platform"))
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("environment", "prod"))
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("app", gatewayNamespacedName.Name))
+
+			By("Verifying pod template has commonMetadata annotations")
+			Expect(deployment.Spec.Template.Annotations).To(HaveKeyWithValue("prometheus.io/scrape", "true"))
+			Expect(deployment.Spec.Template.Annotations).To(HaveKey("gateway.agentic-layer.ai/config-hash"))
+
+			By("Verifying Service has commonMetadata labels")
+			service := &corev1.Service{}
+			err = k8sClient.Get(ctx, gatewayNamespacedName, service)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(service.Labels).To(HaveKeyWithValue("team", "platform"))
+			Expect(service.Labels).To(HaveKeyWithValue("environment", "prod"))
+			Expect(service.Labels).To(HaveKeyWithValue("app", gatewayNamespacedName.Name))
+
+			By("Verifying Service has commonMetadata annotations")
+			Expect(service.Annotations).To(HaveKeyWithValue("prometheus.io/scrape", "true"))
+		})
+	})
+
+	Context("When reconciling an AiGateway with podMetadata", func() {
+		var aiGateway *gatewayv1alpha1.AiGateway
+		var gatewayNamespacedName types.NamespacedName
+		var classNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			gatewayNamespacedName = types.NamespacedName{Name: "test-gateway-with-pod-metadata", Namespace: testNamespace}
+			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName, Namespace: testNamespace}
+
+			createDefaultClass(classNamespacedName)
+
+			By("Creating an AiGateway with commonMetadata and podMetadata")
+			aiGateway = &gatewayv1alpha1.AiGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      gatewayNamespacedName.Name,
+					Namespace: testNamespace,
+				},
+				Spec: gatewayv1alpha1.AiGatewaySpec{
+					Port: testPort,
+					AiModels: []gatewayv1alpha1.AiModel{
+						{Name: "gpt-3.5-turbo", Provider: "openai"},
+					},
+					CommonMetadata: &gatewayv1alpha1.EmbeddedMetadata{
+						Labels: map[string]string{
+							"team": "platform",
+						},
+						Annotations: map[string]string{
+							"prometheus.io/scrape": "true",
+						},
+					},
+					PodMetadata: &gatewayv1alpha1.EmbeddedMetadata{
+						Labels: map[string]string{
+							"sidecar": "enabled",
+						},
+						Annotations: map[string]string{
+							"sidecar.istio.io/inject": "true",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, aiGateway)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			cleanupAiGateway(gatewayNamespacedName)
+			cleanupAiGatewayClass(classNamespacedName)
+		})
+
+		It("should apply podMetadata only to pod template, not to Deployment or Service ObjectMeta", func() {
+			By("Reconciling the created resource")
+			reconciler := &AiGatewayReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: gatewayNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal(reconcile.Result{}))
+
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, gatewayNamespacedName, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying Deployment ObjectMeta does NOT have podMetadata labels")
+			Expect(deployment.Labels).NotTo(HaveKey("sidecar"))
+
+			By("Verifying Deployment ObjectMeta does NOT have podMetadata annotations")
+			Expect(deployment.Annotations).NotTo(HaveKey("sidecar.istio.io/inject"))
+
+			By("Verifying pod template has both commonMetadata and podMetadata labels")
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("team", "platform"))
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("sidecar", "enabled"))
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("app", gatewayNamespacedName.Name))
+
+			By("Verifying pod template has both commonMetadata and podMetadata annotations")
+			Expect(deployment.Spec.Template.Annotations).To(HaveKeyWithValue("prometheus.io/scrape", "true"))
+			Expect(deployment.Spec.Template.Annotations).To(HaveKeyWithValue("sidecar.istio.io/inject", "true"))
+
+			By("Verifying Service does NOT have podMetadata labels")
+			service := &corev1.Service{}
+			err = k8sClient.Get(ctx, gatewayNamespacedName, service)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(service.Labels).NotTo(HaveKey("sidecar"))
+
+			By("Verifying Service does NOT have podMetadata annotations")
+			Expect(service.Annotations).NotTo(HaveKey("sidecar.istio.io/inject"))
+		})
+	})
+
 })
 
 func cleanupAiGatewayClass(namespacedName types.NamespacedName) {
