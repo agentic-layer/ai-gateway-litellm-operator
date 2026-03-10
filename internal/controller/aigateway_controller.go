@@ -447,25 +447,29 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 							LivenessProbe: &corev1.Probe{
 								ProbeHandler: corev1.ProbeHandler{
 									HTTPGet: &corev1.HTTPGetAction{
-										Path: "/health/liveliness",
-										Port: intstr.FromInt32(aiGateway.Spec.Port),
+										Path:   "/health/liveliness",
+										Port:   intstr.FromInt32(aiGateway.Spec.Port),
+										Scheme: corev1.URISchemeHTTP,
 									},
 								},
 								InitialDelaySeconds: 15,
 								PeriodSeconds:       10,
 								TimeoutSeconds:      5,
+								SuccessThreshold:    1,
 								FailureThreshold:    3,
 							},
 							ReadinessProbe: &corev1.Probe{
 								ProbeHandler: corev1.ProbeHandler{
 									HTTPGet: &corev1.HTTPGetAction{
-										Path: "/health/readiness",
-										Port: intstr.FromInt32(aiGateway.Spec.Port),
+										Path:   "/health/readiness",
+										Port:   intstr.FromInt32(aiGateway.Spec.Port),
+										Scheme: corev1.URISchemeHTTP,
 									},
 								},
 								InitialDelaySeconds: 5,
 								PeriodSeconds:       10,
 								TimeoutSeconds:      5,
+								SuccessThreshold:    1,
 								FailureThreshold:    3,
 							},
 						},
