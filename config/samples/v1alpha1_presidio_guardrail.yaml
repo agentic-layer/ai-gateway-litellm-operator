@@ -1,0 +1,66 @@
+# Example: Presidio PII masking guardrail setup for an AiGateway
+#
+# This sample demonstrates how to configure a Presidio-based PII guardrail.
+# Presidio requires two services to be deployed: an Analyzer and an Anonymizer.
+# See https://microsoft.github.io/presidio/ for deployment instructions.
+#
+# Current limitation: The GuardrailProvider only supports a single backend URL. The
+# operator maps it to both `presidio_analyzer_api_base` and `presidio_anonymizer_api_base`
+# in the LiteLLM config. If your Presidio deployment runs the Analyzer and Anonymizer
+# at different URLs, configure both to use the same entry point (e.g. a reverse proxy)
+# or wait for the GuardrailProvider CRD to support separate analyzer/anonymizer fields.
+#
+# NOTE: The 'presidio' protocol is pending upstream acceptance in the
+# agent-runtime-operator CRD. Once merged, no local patch will be needed.
+---
+# GuardrailProvider references the Presidio backend service.
+# BackendRef points to a Kubernetes Service that fronts the Presidio deployment.
+# The operator uses this single URL for both the Presidio Analyzer and Anonymizer
+# endpoints (`presidio_analyzer_api_base` and `presidio_anonymizer_api_base` in the
+# generated LiteLLM config).
+# TODO(upstream): Add separate analyzerBackendRef / anonymizerBackendRef fields to the
+# GuardrailProvider CRD to support distinct Presidio analyzer and anonymizer endpoints.
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: GuardrailProvider
+metadata:
+  name: presidio
+  namespace: default
+spec:
+  protocol: presidio
+  backendRef:
+    name: presidio-service
+    namespace: default
+    port: 80
+---
+# Guard defines when the guardrail is applied and references the provider.
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: Guard
+metadata:
+  name: pii-masking
+  namespace: default
+spec:
+  # 'presidio' is the LiteLLM guardrail type identifier.
+  name: presidio
+  mode: pre_call
+  description: Detect and mask PII in user inputs before they are sent to the LLM.
+  providerRef:
+    name: presidio
+    namespace: default
+---
+# AiGateway references the Guard to activate it for all requests.
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: AiGateway
+metadata:
+  labels:
+    app.kubernetes.io/name: my-litellm
+    app.kubernetes.io/managed-by: kustomize
+  name: my-litellm
+  namespace: default
+spec:
+  aiGatewayClassName: litellm
+  aiModels:
+    - provider: openai
+      name: gpt-3.5-turbo
+  guardrails:
+    - name: pii-masking
+      namespace: default
