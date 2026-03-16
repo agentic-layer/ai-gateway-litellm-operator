@@ -45,7 +45,7 @@ import (
 )
 
 const (
-	litellmImage = "ghcr.io/berriai/litellm:v1.81.12-stable.2"
+	litellmImage = "ghcr.io/berriai/litellm:v1.81.12-stable.langfuse-fix"
 )
 
 // Status condition types
