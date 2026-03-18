@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/agentic-layer/ai-gateway-litellm/test/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -96,6 +97,14 @@ var _ = BeforeSuite(func() {
 	_, err = utils.Run(exec.Command("make", "install"))
 	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
+	By("deploying WireMock mock LLM provider")
+	_, err = utils.Run(exec.Command("kubectl", "apply", "-f", "config/samples/wiremock/wiremock.yaml"))
+	Expect(err).NotTo(HaveOccurred(), "Failed to deploy WireMock")
+
+	By("waiting for WireMock to be ready")
+	Expect(utils.VerifyDeploymentReady("wiremock", "default", 2*time.Minute)).
+		To(Succeed(), "WireMock deployment did not become ready")
+
 	By("deploying the controller-manager")
 	_, err = utils.Run(exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage)))
 	Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
@@ -107,6 +116,9 @@ var _ = AfterSuite(func() {
 
 	By("uninstalling CRDs")
 	_, _ = utils.Run(exec.Command("make", "uninstall"))
+
+	By("removing WireMock mock LLM provider")
+	_, _ = utils.Run(exec.Command("kubectl", "delete", "-f", "config/samples/wiremock/wiremock.yaml", "--ignore-not-found=true"))
 
 	By("removing manager namespace")
 	_, _ = utils.Run(exec.Command("kubectl", "delete", "ns", namespace))

@@ -10,9 +10,14 @@ spec:
   aiModels:
     - provider: openai
       name: gpt-3.5-turbo
-    - provider: gemini
-      name: gemini-2.5-flash
-  # Optional: Add custom environment variables
+  # Route the OpenAI provider to the local WireMock mock LLM server.
+  # Apply config/samples/wiremock/ first, then this file, for a fully working local setup.
+  env:
+    - name: OPENAI_API_BASE
+      value: http://wiremock:8080
+    - name: OPENAI_API_KEY
+      value: test-key
+  # Optional: configure additional environment variables
   # env:
   #   # Configure OpenTelemetry endpoint for distributed tracing
   #   - name: OTEL_EXPORTER_OTLP_ENDPOINT
