@@ -1,5 +1,5 @@
 ## Append samples of your project ##
 resources:
 - v1alpha1_aigateway.yaml
-- v1alpha1_presidio_guardrail.yaml
+- v1alpha1_guardrail_presidio.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

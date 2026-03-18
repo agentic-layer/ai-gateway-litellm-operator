@@ -383,11 +383,11 @@ kind-load:
 
 ## Agent Runtime CRD configuration
 AGENT_RUNTIME_CRD_DIR = config/crd/external
-# For pseudo-versions (e.g. v0.24.1-0.20260316125034-374bf4839fa1), extract the commit hash.
+# For pseudo-versions (e.g. v0.24.1-0.20260318131229-08f897b58ca1), extract the commit hash.
 # For tagged versions (e.g. v0.24.0), use refs/tags/<version>.
 AGENT_RUNTIME_GIT_REF := $(shell \
 	version="$(AGENT_RUNTIME_VERSION)"; \
-	if echo "$$version" | grep -qE -- '-[0-9]{14}-[0-9a-f]{12}$$'; then \
+	if echo "$$version" | grep -qE -- '-[0-9]+\.[0-9]{14}-[0-9a-f]{12}$$'; then \
 		echo "$$version" | sed 's/.*-//'; \
 	else \
 		echo "refs/tags/$$version"; \
