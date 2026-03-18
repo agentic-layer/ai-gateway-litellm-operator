@@ -1,36 +1,22 @@
 # Example: Presidio PII masking guardrail setup for an AiGateway
 #
 # This sample demonstrates how to configure a Presidio-based PII guardrail.
-# Presidio requires two services to be deployed: an Analyzer and an Anonymizer.
+# Presidio requires the Analyzer and Anonymizer services to be running.
 # See https://microsoft.github.io/presidio/ for deployment instructions.
 #
-# Current limitation: The GuardrailProvider only supports a single backend URL. The
-# operator maps it to both `presidio_analyzer_api_base` and `presidio_anonymizer_api_base`
-# in the LiteLLM config. If your Presidio deployment runs the Analyzer and Anonymizer
-# at different URLs, configure both to use the same entry point (e.g. a reverse proxy)
-# or wait for the GuardrailProvider CRD to support separate analyzer/anonymizer fields.
-#
-# NOTE: The 'presidio' protocol is pending upstream acceptance in the
-# agent-runtime-operator CRD. Once merged, no local patch will be needed.
+# The GuardrailProvider.spec.presidio.baseUrl is used for both the Presidio
+# Analyzer and Anonymizer endpoints in the generated LiteLLM config.
 ---
 # GuardrailProvider references the Presidio backend service.
-# BackendRef points to a Kubernetes Service that fronts the Presidio deployment.
-# The operator uses this single URL for both the Presidio Analyzer and Anonymizer
-# endpoints (`presidio_analyzer_api_base` and `presidio_anonymizer_api_base` in the
-# generated LiteLLM config).
-# TODO(upstream): Add separate analyzerBackendRef / anonymizerBackendRef fields to the
-# GuardrailProvider CRD to support distinct Presidio analyzer and anonymizer endpoints.
 apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: GuardrailProvider
 metadata:
   name: presidio
   namespace: default
 spec:
-  protocol: presidio
-  backendRef:
-    name: presidio-service
-    namespace: default
-    port: 80
+  type: presidio-api
+  presidio:
+    baseUrl: "http://presidio-service.default.svc.cluster.local:80"
 ---
 # Guard defines when the guardrail is applied and references the provider.
 apiVersion: runtime.agentic-layer.ai/v1alpha1
@@ -39,9 +25,8 @@ metadata:
   name: pii-masking
   namespace: default
 spec:
-  # 'presidio' is the LiteLLM guardrail type identifier.
-  name: presidio
-  mode: pre_call
+  mode:
+    - pre_call
   description: Detect and mask PII in user inputs before they are sent to the LLM.
   providerRef:
     name: presidio

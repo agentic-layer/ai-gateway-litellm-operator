@@ -464,15 +464,17 @@ var _ = Describe("AiGateway Controller", func() {
 
 			createDefaultClass(classNamespacedName)
 
-			By("Creating a GuardrailProvider with presidio protocol and ExternalUrl")
+			By("Creating a GuardrailProvider with presidio-api type")
 			provider := &gatewayv1alpha1.GuardrailProvider{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      providerNamespacedName.Name,
 					Namespace: testNamespace,
 				},
 				Spec: gatewayv1alpha1.GuardrailProviderSpec{
-					Protocol:    "presidio",
-					ExternalUrl: "http://presidio.example.com:80",
+					Type: "presidio-api",
+					Presidio: &gatewayv1alpha1.PresidioProviderConfig{
+						BaseUrl: "http://presidio.example.com:80",
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, provider)).To(Succeed())
@@ -484,8 +486,7 @@ var _ = Describe("AiGateway Controller", func() {
 					Namespace: testNamespace,
 				},
 				Spec: gatewayv1alpha1.GuardSpec{
-					Name:        "presidio",
-					Mode:        "pre_call",
+					Mode:        []gatewayv1alpha1.GuardMode{gatewayv1alpha1.GuardModePreCall},
 					Description: "PII masking via Presidio",
 					ProviderRef: corev1.ObjectReference{
 						Name:      providerNamespacedName.Name,
@@ -554,7 +555,7 @@ var _ = Describe("AiGateway Controller", func() {
 			configContent := configMap.Data["config.yaml"]
 			Expect(configContent).To(ContainSubstring("guardrails"))
 			Expect(configContent).To(ContainSubstring("pii-guard"))
-			Expect(configContent).To(ContainSubstring("presidio"))
+			Expect(configContent).To(ContainSubstring("presidio-api"))
 			Expect(configContent).To(ContainSubstring("pre_call"))
 			Expect(configContent).To(ContainSubstring("default_on: true"))
 			Expect(configContent).To(ContainSubstring("presidio_analyzer_api_base: http://presidio.example.com:80"))
@@ -562,7 +563,7 @@ var _ = Describe("AiGateway Controller", func() {
 		})
 	})
 
-	Context("When reconciling an AiGateway with Presidio guardrails using BackendRef", func() {
+	Context("When reconciling an AiGateway with Presidio guardrails with multiple modes", func() {
 		var aiGateway *gatewayv1alpha1.AiGateway
 		var gatewayNamespacedName types.NamespacedName
 		var classNamespacedName types.NamespacedName
@@ -570,41 +571,39 @@ var _ = Describe("AiGateway Controller", func() {
 		var providerNamespacedName types.NamespacedName
 
 		BeforeEach(func() {
-			gatewayNamespacedName = types.NamespacedName{Name: "test-gateway-guardrails-backendref", Namespace: testNamespace}
+			gatewayNamespacedName = types.NamespacedName{Name: "test-gateway-guardrails-multi-mode", Namespace: testNamespace}
 			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName, Namespace: testNamespace}
-			guardNamespacedName = types.NamespacedName{Name: "pii-guard-backendref", Namespace: testNamespace}
-			providerNamespacedName = types.NamespacedName{Name: "presidio-provider-backendref", Namespace: testNamespace}
+			guardNamespacedName = types.NamespacedName{Name: "pii-guard-multi-mode", Namespace: testNamespace}
+			providerNamespacedName = types.NamespacedName{Name: "presidio-provider-multi-mode", Namespace: testNamespace}
 
 			createDefaultClass(classNamespacedName)
 
-			By("Creating a GuardrailProvider with presidio protocol and BackendRef")
+			By("Creating a GuardrailProvider with presidio-api type")
 			provider := &gatewayv1alpha1.GuardrailProvider{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      providerNamespacedName.Name,
 					Namespace: testNamespace,
 				},
 				Spec: gatewayv1alpha1.GuardrailProviderSpec{
-					Protocol: "presidio",
-					BackendRef: &gatewayv1alpha1.GuardrailBackendRef{
-						ObjectReference: corev1.ObjectReference{
-							Name:      "presidio-service",
-							Namespace: testNamespace,
-						},
-						Port: 3000,
+					Type: "presidio-api",
+					Presidio: &gatewayv1alpha1.PresidioProviderConfig{
+						BaseUrl: "http://presidio.example.com:3000",
 					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, provider)).To(Succeed())
 
-			By("Creating a Guard referencing the GuardrailProvider")
+			By("Creating a Guard with multiple modes referencing the GuardrailProvider")
 			guard := &gatewayv1alpha1.Guard{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      guardNamespacedName.Name,
 					Namespace: testNamespace,
 				},
 				Spec: gatewayv1alpha1.GuardSpec{
-					Name: "presidio",
-					Mode: "post_call",
+					Mode: []gatewayv1alpha1.GuardMode{
+						gatewayv1alpha1.GuardModePreCall,
+						gatewayv1alpha1.GuardModePostCall,
+					},
 					ProviderRef: corev1.ObjectReference{
 						Name:      providerNamespacedName.Name,
 						Namespace: testNamespace,
@@ -649,7 +648,7 @@ var _ = Describe("AiGateway Controller", func() {
 			}
 		})
 
-		It("should include presidio guardrail config with in-cluster service URL", func() {
+		It("should include all modes in the guardrail config", func() {
 			By("Reconciling the created resource")
 			reconciler := &AiGatewayReconciler{
 				Client: k8sClient,
@@ -662,7 +661,7 @@ var _ = Describe("AiGateway Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(Equal(reconcile.Result{}))
 
-			By("Verifying ConfigMap contains guardrail configuration with in-cluster service URL")
+			By("Verifying ConfigMap contains guardrail configuration with both modes")
 			configMap := &corev1.ConfigMap{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
 				Name:      gatewayNamespacedName.Name + "-config",
@@ -671,11 +670,12 @@ var _ = Describe("AiGateway Controller", func() {
 
 			configContent := configMap.Data["config.yaml"]
 			Expect(configContent).To(ContainSubstring("guardrails"))
-			Expect(configContent).To(ContainSubstring("pii-guard-backendref"))
-			Expect(configContent).To(ContainSubstring("presidio"))
+			Expect(configContent).To(ContainSubstring("pii-guard-multi-mode"))
+			Expect(configContent).To(ContainSubstring("presidio-api"))
+			Expect(configContent).To(ContainSubstring("pre_call"))
 			Expect(configContent).To(ContainSubstring("post_call"))
 			Expect(configContent).To(ContainSubstring("default_on: true"))
-			Expect(configContent).To(ContainSubstring("http://presidio-service.default.svc.cluster.local:3000"))
+			Expect(configContent).To(ContainSubstring("presidio_analyzer_api_base: http://presidio.example.com:3000"))
 		})
 	})
 

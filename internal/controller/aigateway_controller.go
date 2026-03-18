@@ -91,8 +91,8 @@ const ControllerName = "aigateway.agentic-layer.ai/ai-gateway-litellm-controller
 
 // LiteLLMConfig configuration structs
 type LiteLLMConfig struct {
-	ModelList       []ModelConfig    `yaml:"model_list"`
-	LiteLLMSettings LiteLLMSettings  `yaml:"litellm_settings,omitempty"`
+	ModelList       []ModelConfig     `yaml:"model_list"`
+	LiteLLMSettings LiteLLMSettings   `yaml:"litellm_settings,omitempty"`
 	Guardrails      []GuardrailConfig `yaml:"guardrails,omitempty"`
 }
 
@@ -113,7 +113,7 @@ type LiteLLMSettings struct {
 
 // GuardrailConfig represents a single guardrail entry in the LiteLLM configuration.
 type GuardrailConfig struct {
-	GuardrailName string             `yaml:"guardrail_name"`
+	GuardrailName string                 `yaml:"guardrail_name"`
 	LiteLLMParams GuardrailLiteLLMParams `yaml:"litellm_params"`
 }
 
@@ -121,8 +121,8 @@ type GuardrailConfig struct {
 type GuardrailLiteLLMParams struct {
 	// Guardrail is the LiteLLM guardrail type identifier (e.g. "presidio").
 	Guardrail string `yaml:"guardrail"`
-	// Mode defines when the guardrail is applied: pre_call, post_call, or during_call.
-	Mode string `yaml:"mode"`
+	// Mode defines when the guardrail is applied. Multiple modes can be specified.
+	Mode []string `yaml:"mode"`
 	// DefaultOn ensures the guardrail is applied to every request without requiring
 	// explicit opt-in per call.
 	DefaultOn bool `yaml:"default_on"`
@@ -379,7 +379,7 @@ func (r *AiGatewayReconciler) resolveGuardrails(ctx context.Context, aiGateway *
 
 		guardrailCfg, err := r.buildGuardrailConfig(&guard, &provider)
 		if err != nil {
-			log.Error(err, "Skipping unsupported guardrail", "guard", guard.Name, "protocol", provider.Spec.Protocol)
+			log.Error(err, "Skipping unsupported guardrail", "guard", guard.Name, "type", provider.Spec.Type)
 			continue
 		}
 		guardrails = append(guardrails, guardrailCfg)
@@ -390,52 +390,37 @@ func (r *AiGatewayReconciler) resolveGuardrails(ctx context.Context, aiGateway *
 
 // buildGuardrailConfig maps a Guard and its GuardrailProvider to a LiteLLM GuardrailConfig.
 func (r *AiGatewayReconciler) buildGuardrailConfig(guard *gatewayv1alpha1.Guard, provider *gatewayv1alpha1.GuardrailProvider) (GuardrailConfig, error) {
+	// Convert []GuardMode to []string for the LiteLLM YAML config.
+	modes := make([]string, len(guard.Spec.Mode))
+	for i, m := range guard.Spec.Mode {
+		modes[i] = string(m)
+	}
+
 	params := GuardrailLiteLLMParams{
-		// Use the provider protocol as the LiteLLM guardrail type identifier (e.g. "presidio").
+		// Use the provider type as the LiteLLM guardrail type identifier (e.g. "presidio").
 		// This maps directly to the LiteLLM guardrail implementation to use.
-		Guardrail: provider.Spec.Protocol,
-		Mode:      guard.Spec.Mode,
+		Guardrail: provider.Spec.Type,
+		Mode:      modes,
 		DefaultOn: true,
 	}
 
-	// Map the provider backend URL(s) to protocol-specific LiteLLM parameters.
-	backendURL := r.resolveBackendURL(provider)
-	switch provider.Spec.Protocol {
-	case "presidio":
-		// Presidio requires both an Analyzer and an Anonymizer endpoint.
-		// The GuardrailProvider currently supports a single backend URL; we use it for both.
-		// NOTE: Separate analyzer/anonymizer URL fields are missing from the GuardrailProvider
-		// CRD and should be added to the agent-runtime-operator to support distinct endpoints.
-		params.PresidioAnalyzerApiBase = backendURL
-		params.PresidioAnonymizerApiBase = backendURL
+	switch provider.Spec.Type {
+	case "presidio-api":
+		if provider.Spec.Presidio == nil {
+			return GuardrailConfig{}, fmt.Errorf("GuardrailProvider %s has type presidio-api but no presidio config", provider.Name)
+		}
+		// Presidio requires both an Analyzer and an Anonymizer endpoint. The CRD provides a
+		// single baseUrl for the Presidio service, which is used for both.
+		params.PresidioAnalyzerApiBase = provider.Spec.Presidio.BaseUrl
+		params.PresidioAnonymizerApiBase = provider.Spec.Presidio.BaseUrl
 	default:
-		return GuardrailConfig{}, fmt.Errorf("unsupported guardrail protocol %q for guard %s", provider.Spec.Protocol, guard.Name)
+		return GuardrailConfig{}, fmt.Errorf("unsupported guardrail provider type %q for guard %s", provider.Spec.Type, guard.Name)
 	}
 
 	return GuardrailConfig{
 		GuardrailName: guard.Name,
 		LiteLLMParams: params,
 	}, nil
-}
-
-// resolveBackendURL returns the effective backend URL for a GuardrailProvider.
-// It prefers ExternalUrl; if absent it constructs a URL from BackendRef.
-func (r *AiGatewayReconciler) resolveBackendURL(provider *gatewayv1alpha1.GuardrailProvider) string {
-	if provider.Spec.ExternalUrl != "" {
-		return provider.Spec.ExternalUrl
-	}
-	if provider.Spec.BackendRef != nil {
-		namespace := provider.Spec.BackendRef.Namespace
-		if namespace == "" {
-			namespace = provider.Namespace
-		}
-		return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d",
-			provider.Spec.BackendRef.Name,
-			namespace,
-			provider.Spec.BackendRef.Port,
-		)
-	}
-	return ""
 }
 
 func (r *AiGatewayReconciler) getProviderApiKeyEnvVar(model gatewayv1alpha1.AiModel) string {

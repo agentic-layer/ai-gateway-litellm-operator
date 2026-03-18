@@ -406,21 +406,6 @@ $(AGENT_RUNTIME_CRD_DIR)/%.yaml: $(AGENT_RUNTIME_VERSION_FILE)
 	@echo "Downloading $(notdir $@) version $(AGENT_RUNTIME_VERSION)..."
 	@curl -sSLf -o $@ $(AGENT_RUNTIME_CRD_BASE_URL)/$(notdir $@)
 
-# Patch the GuardrailProvider CRD to add the 'presidio' protocol, which is not yet in the
-# upstream agent-runtime-operator CRD. This should be removed once the upstream CRD is updated.
-$(AGENT_RUNTIME_CRD_DIR)/runtime.agentic-layer.ai_guardrailproviders.yaml: $(AGENT_RUNTIME_VERSION_FILE)
-	@echo "Downloading $(notdir $@) version $(AGENT_RUNTIME_VERSION)..."
-	@curl -sSLf -o $@ $(AGENT_RUNTIME_CRD_BASE_URL)/$(notdir $@)
-	@python3 -c "\
-import sys; \
-f = open('$@', 'r+'); \
-content = f.read(); \
-old = '                - openai-moderation\n                - bedrock\n                type: string\n              transportType:'; \
-new = '                - openai-moderation\n                - bedrock\n                - presidio\n                type: string\n              transportType:'; \
-content = content.replace(old, new); \
-f.seek(0); f.write(content); f.truncate(); f.close()"
-	@echo "Patched $(notdir $@) to add presidio protocol"
-
 $(AGENT_RUNTIME_VERSION_FILE): FORCE
 	@if [ ! -f $@ ] || [ "$$(cat $@)" != "$(AGENT_RUNTIME_VERSION)" ]; then \
 		echo "Version changed to $(AGENT_RUNTIME_VERSION), removing old CRDs..."; \
