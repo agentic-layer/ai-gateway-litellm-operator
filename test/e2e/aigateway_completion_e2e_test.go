@@ -45,6 +45,10 @@ var _ = Describe("AiGateway Chat Completion", Ordered, func() {
 		_, err := utils.Run(exec.Command("kubectl", "apply",
 			"-f", "config/samples/v1alpha1_aigateway.yaml"))
 		Expect(err).NotTo(HaveOccurred(), "Failed to apply AiGateway sample")
+
+		By("waiting for AiGateway deployment to be ready")
+		Expect(utils.VerifyDeploymentReady("my-litellm", "default", 3*time.Minute)).
+			To(Succeed(), "AiGateway deployment did not become ready")
 	})
 
 	AfterAll(func() {

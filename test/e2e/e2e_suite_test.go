@@ -118,7 +118,8 @@ var _ = AfterSuite(func() {
 	_, _ = utils.Run(exec.Command("make", "uninstall"))
 
 	By("removing WireMock mock LLM provider")
-	_, _ = utils.Run(exec.Command("kubectl", "delete", "-f", "config/samples/wiremock/wiremock.yaml", "--ignore-not-found=true"))
+	_, _ = utils.Run(exec.Command("kubectl", "delete",
+		"-f", "config/samples/wiremock/wiremock.yaml", "--ignore-not-found=true"))
 
 	By("removing manager namespace")
 	_, _ = utils.Run(exec.Command("kubectl", "delete", "ns", namespace))
