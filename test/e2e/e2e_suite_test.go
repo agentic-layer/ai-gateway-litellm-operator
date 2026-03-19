@@ -34,6 +34,12 @@ const operatorName = "ai-gateway-litellm-operator"
 // namespace where the project is deployed in
 const namespace = "ai-gateway-litellm-system"
 
+// litellmImage is the LiteLLM container image used by the operator. It is pre-loaded into Kind
+// in BeforeSuite so that LiteLLM pods start without a remote image pull, keeping E2E test duration
+// predictable and making the Eventually timeouts reliable.
+// This must be kept in sync with the litellmImage constant in internal/controller/aigateway_controller.go.
+const litellmImage = "ghcr.io/berriai/litellm:v1.82.3-stable"
+
 var (
 	// Optional Environment Variables:
 	// - CERT_MANAGER_INSTALL_SKIP=true: Skips CertManager installation during test setup.
@@ -67,6 +73,14 @@ var _ = BeforeSuite(func() {
 	By("loading the manager(Operator) image on Kind")
 	err = utils.LoadImageToKindClusterWithName(projectImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
+
+	By("pulling the LiteLLM image to pre-load it into Kind (avoids pull delay during tests)")
+	_, err = utils.Run(exec.Command("docker", "pull", litellmImage))
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to pull LiteLLM image")
+
+	By("loading the LiteLLM image into Kind (avoids pull delay during tests)")
+	err = utils.LoadImageToKindClusterWithName(litellmImage)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load LiteLLM image into Kind")
 
 	// The tests-e2e are intended to run on a temporary cluster that is created and destroyed for testing.
 	// To prevent errors when tests run in environments with CertManager already installed,

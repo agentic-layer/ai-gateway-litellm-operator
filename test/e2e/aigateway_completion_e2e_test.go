@@ -27,6 +27,10 @@ import (
 	"github.com/agentic-layer/ai-gateway-litellm/test/utils"
 )
 
+// completionTestTimeout is the maximum time to wait for the AI gateway to return a chat completion.
+// It must be long enough to cover LiteLLM startup time on the first request.
+const completionTestTimeout = 5 * time.Minute
+
 // chatCompletionRequest is the minimal OpenAI chat completion request body.
 type chatCompletionRequest struct {
 	Model    string        `json:"model"`
@@ -45,10 +49,6 @@ var _ = Describe("AiGateway Chat Completion", Ordered, func() {
 		_, err := utils.Run(exec.Command("kubectl", "apply",
 			"-f", "config/samples/v1alpha1_aigateway.yaml"))
 		Expect(err).NotTo(HaveOccurred(), "Failed to apply AiGateway sample")
-
-		By("waiting for AiGateway deployment to be ready")
-		Expect(utils.VerifyDeploymentReady("my-litellm", "default", 3*time.Minute)).
-			To(Succeed(), "AiGateway deployment did not become ready")
 	})
 
 	AfterAll(func() {
@@ -82,7 +82,7 @@ var _ = Describe("AiGateway Chat Completion", Ordered, func() {
 				"/v1/chat/completions", payload)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(statusCode).To(Equal(200))
-		}, 3*time.Minute, 5*time.Second).Should(Succeed(),
+		}, completionTestTimeout, 5*time.Second).Should(Succeed(),
 			"AI gateway did not return a successful chat completion response")
 
 		By("verifying the response contains the expected fields")
