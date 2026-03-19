@@ -452,11 +452,11 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 										Scheme: corev1.URISchemeHTTP,
 									},
 								},
-								InitialDelaySeconds: 15,
+								InitialDelaySeconds: 30,
 								PeriodSeconds:       10,
 								TimeoutSeconds:      5,
 								SuccessThreshold:    1,
-								FailureThreshold:    3,
+								FailureThreshold:    10,
 							},
 							ReadinessProbe: &corev1.Probe{
 								ProbeHandler: corev1.ProbeHandler{
