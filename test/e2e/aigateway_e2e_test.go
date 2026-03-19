@@ -27,6 +27,16 @@ import (
 	"github.com/agentic-layer/ai-gateway-litellm/test/utils"
 )
 
+type chatCompletionRequest struct {
+	Model    string        `json:"model"`
+	Messages []chatMessage `json:"messages"`
+}
+
+type chatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 var _ = Describe("AiGateway", Ordered, func() {
 
 	BeforeAll(func() {
@@ -39,7 +49,7 @@ var _ = Describe("AiGateway", Ordered, func() {
 	AfterAll(func() {
 		By("cleaning up test resources")
 		_, _ = utils.Run(exec.Command("kubectl", "delete",
-			"-f", "config/samples/v1alpha1_aigateway.yaml"))
+			"-f", "config/samples/v1alpha1_aigateway.yaml", "--ignore-not-found=true"))
 	})
 
 	AfterEach(func() {
@@ -73,6 +83,49 @@ var _ = Describe("AiGateway", Ordered, func() {
 
 		Expect(data).To(ContainElement(HaveKeyWithValue("id", "gpt-3.5-turbo")),
 			"the /models endpoint should contain the configured model gpt-3.5-turbo")
+	})
+
+	It("should forward a chat completion request to the mocked LLM provider and return a valid response", func() {
+		payload := chatCompletionRequest{
+			Model: "gpt-3.5-turbo",
+			Messages: []chatMessage{
+				{Role: "user", Content: "Hello!"},
+			},
+		}
+
+		By("sending POST /v1/chat/completions through the AI gateway")
+		var body []byte
+		Eventually(func(g Gomega) {
+			var statusCode int
+			var err error
+			body, statusCode, err = utils.MakeServicePost("default", "my-litellm", 80,
+				"/v1/chat/completions", payload)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(statusCode).To(Equal(200))
+		}, 3*time.Minute, 5*time.Second).Should(Succeed(),
+			"AI gateway did not return a successful chat completion response")
+
+		By("verifying the response contains the expected fields")
+		var response map[string]interface{}
+		err := json.Unmarshal(body, &response)
+		Expect(err).NotTo(HaveOccurred(), "Failed to unmarshal chat completion response")
+
+		Expect(response["object"]).To(Equal("chat.completion"),
+			"Response 'object' field should be 'chat.completion'")
+
+		choices, ok := response["choices"].([]interface{})
+		Expect(ok).To(BeTrue(), "Response should contain a 'choices' array")
+		Expect(choices).NotTo(BeEmpty(), "Response 'choices' should not be empty")
+
+		firstChoice, ok := choices[0].(map[string]interface{})
+		Expect(ok).To(BeTrue(), "First choice should be an object")
+
+		message, ok := firstChoice["message"].(map[string]interface{})
+		Expect(ok).To(BeTrue(), "First choice should contain a 'message' object")
+		Expect(message["role"]).To(Equal("assistant"),
+			"Response message role should be 'assistant'")
+		Expect(message["content"]).To(Equal("I am a mock AI response from WireMock."),
+			"Response message content should match the WireMock stub")
 	})
 
 	It("should redeploy when env vars change", func() {
