@@ -19,12 +19,3 @@ func VerifyDeploymentReady(name, namespace string, timeout time.Duration) error 
 	}
 	return nil
 }
-
-// DeleteAgent deletes an agent resource
-func DeleteAgent(name, namespace string) error {
-	cmd := exec.Command("kubectl", "delete", "agent", name, "-n", namespace)
-	if output, err := Run(cmd); err != nil {
-		return fmt.Errorf("failed to delete agent %s in namespace %s: %s", name, namespace, output)
-	}
-	return nil
-}

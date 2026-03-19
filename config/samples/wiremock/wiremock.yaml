@@ -1,5 +1,5 @@
 # WireMock mock LLM provider for local and e2e testing.
-# Implements OpenAI-compatible /v1/chat/completions and /v1/models endpoints
+# Implements OpenAI-compatible /chat/completions and /v1/models endpoints
 # so LiteLLM can be pointed at it without a real API key or internet access.
 #
 # Usage:
@@ -10,12 +10,12 @@ kind: ConfigMap
 metadata:
   name: wiremock-stubs
 data:
-  # Stub: POST /v1/chat/completions
+  # Stub: POST /chat/completions
   chat-completion.json: |
     {
       "request": {
         "method": "POST",
-        "url": "/v1/chat/completions"
+        "url": "/chat/completions"
       },
       "response": {
         "status": 200,
