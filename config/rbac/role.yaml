@@ -49,6 +49,8 @@ rules:
   - runtime.agentic-layer.ai
   resources:
   - aigatewayclasses
+  - guardrailproviders
+  - guards
   verbs:
   - get
   - list

@@ -1,0 +1,47 @@
+# E2E test resources: Presidio PII guardrail wiring.
+# Applied during the e2e test suite; expects presidio.yaml services to be running first.
+---
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: GuardrailProvider
+metadata:
+  name: presidio-e2e
+  namespace: default
+spec:
+  type: presidio-api
+  presidio:
+    baseUrl: "http://presidio-service:80"
+---
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: Guard
+metadata:
+  name: pii-guard-e2e
+  namespace: default
+spec:
+  mode:
+    - pre_call
+  description: E2E test PII guard - masks PII before sending to LLM.
+  providerRef:
+    name: presidio-e2e
+    namespace: default
+---
+# Separate AiGateway instance for the guardrail e2e test.
+# Routes to the WireMock mock LLM (same as the main aigateway test) and
+# applies the Presidio PII guardrail for every request.
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: AiGateway
+metadata:
+  name: my-litellm-pii
+  namespace: default
+spec:
+  aiGatewayClassName: litellm
+  aiModels:
+    - provider: openai
+      name: gpt-3.5-turbo
+  env:
+    - name: OPENAI_API_BASE
+      value: http://wiremock:8080
+    - name: OPENAI_API_KEY
+      value: test-key
+  guardrails:
+    - name: pii-guard-e2e
+      namespace: default
