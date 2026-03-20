@@ -1,8 +1,8 @@
-# Example: Presidio PII masking guardrail setup for an AiGateway
+# Example: Presidio PII masking guardrail setup for an AiGateway.
 #
 # This sample demonstrates how to configure a Presidio-based PII guardrail.
-# Presidio requires the Analyzer and Anonymizer services to be running.
-# See https://microsoft.github.io/presidio/ for deployment instructions.
+# Presidio requires the Analyzer and Anonymizer services to be running behind
+# a single URL (see presidio.yaml for an nginx-based reverse proxy setup).
 #
 # The GuardrailProvider.spec.presidio.baseUrl is used for both the Presidio
 # Analyzer and Anonymizer endpoints in the generated LiteLLM config.
@@ -16,13 +16,13 @@ metadata:
 spec:
   type: presidio-api
   presidio:
-    baseUrl: "http://presidio-service.default.svc.cluster.local:80"
+    baseUrl: "http://presidio:80"
 ---
 # Guard defines when the guardrail is applied and references the provider.
 apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: Guard
 metadata:
-  name: pii-masking
+  name: pii-guard
   namespace: default
 spec:
   mode:
@@ -32,20 +32,23 @@ spec:
     name: presidio
     namespace: default
 ---
-# AiGateway references the Guard to activate it for all requests.
+# AiGateway with Presidio guardrail enabled.
+# Routes to the WireMock mock LLM (apply wiremock/wiremock.yaml first).
 apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: AiGateway
 metadata:
-  labels:
-    app.kubernetes.io/name: my-litellm
-    app.kubernetes.io/managed-by: kustomize
-  name: my-litellm
+  name: ai-gateway-pii
   namespace: default
 spec:
   aiGatewayClassName: litellm
   aiModels:
     - provider: openai
       name: gpt-3.5-turbo
+  env:
+    - name: OPENAI_API_BASE
+      value: http://wiremock:8080
+    - name: OPENAI_API_KEY
+      value: test-key
   guardrails:
-    - name: pii-masking
+    - name: pii-guard
       namespace: default

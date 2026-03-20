@@ -2,9 +2,9 @@ apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: AiGateway
 metadata:
   labels:
-    app.kubernetes.io/name: my-litellm
+    app.kubernetes.io/name: ai-gateway
     app.kubernetes.io/managed-by: kustomize
-  name: my-litellm
+  name: ai-gateway
 spec:
   aiGatewayClassName: litellm
   aiModels:

@@ -1,12 +1,12 @@
 # Presidio PII detection services for local and e2e testing.
 # Deploys Presidio Analyzer and Anonymizer, plus an nginx reverse proxy that
-# exposes both services under a single URL (presidio-service:80).
+# exposes both services under a single URL (presidio:80).
 # This is required because the GuardrailProvider CRD uses a single baseUrl
 # which is mapped to both presidio_analyzer_api_base and presidio_anonymizer_api_base.
 #
 # Routes:
-#   POST presidio-service:80/analyze   -> presidio-analyzer:3000
-#   POST presidio-service:80/anonymize -> presidio-anonymizer:3000
+#   POST presidio:80/analyze   -> presidio-analyzer:3000
+#   POST presidio:80/anonymize -> presidio-anonymizer:3000
 ---
 # Nginx reverse-proxy config
 apiVersion: v1
@@ -206,7 +206,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: presidio-service
+  name: presidio
   namespace: default
 spec:
   selector:

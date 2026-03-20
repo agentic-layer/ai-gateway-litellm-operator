@@ -397,9 +397,6 @@ func (r *AiGatewayReconciler) buildGuardrailConfig(guard *gatewayv1alpha1.Guard,
 	}
 
 	params := GuardrailLiteLLMParams{
-		// Use the provider type as the LiteLLM guardrail type identifier (e.g. "presidio").
-		// This maps directly to the LiteLLM guardrail implementation to use.
-		Guardrail: provider.Spec.Type,
 		Mode:      modes,
 		DefaultOn: true,
 	}
@@ -409,6 +406,8 @@ func (r *AiGatewayReconciler) buildGuardrailConfig(guard *gatewayv1alpha1.Guard,
 		if provider.Spec.Presidio == nil {
 			return GuardrailConfig{}, fmt.Errorf("GuardrailProvider %s has type presidio-api but no presidio config", provider.Name)
 		}
+		// The CRD type is "presidio-api" but LiteLLM expects "presidio" as the guardrail identifier.
+		params.Guardrail = "presidio"
 		// Presidio requires both an Analyzer and an Anonymizer endpoint. The CRD provides a
 		// single baseUrl for the Presidio service, which is used for both.
 		params.PresidioAnalyzerApiBase = provider.Spec.Presidio.BaseUrl

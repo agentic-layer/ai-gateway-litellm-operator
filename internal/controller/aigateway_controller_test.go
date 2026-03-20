@@ -555,7 +555,7 @@ var _ = Describe("AiGateway Controller", func() {
 			configContent := configMap.Data["config.yaml"]
 			Expect(configContent).To(ContainSubstring("guardrails"))
 			Expect(configContent).To(ContainSubstring("pii-guard"))
-			Expect(configContent).To(ContainSubstring("presidio-api"))
+			Expect(configContent).To(ContainSubstring("guardrail: presidio"))
 			Expect(configContent).To(ContainSubstring("pre_call"))
 			Expect(configContent).To(ContainSubstring("default_on: true"))
 			Expect(configContent).To(ContainSubstring("presidio_analyzer_api_base: http://presidio.example.com:80"))
@@ -671,7 +671,7 @@ var _ = Describe("AiGateway Controller", func() {
 			configContent := configMap.Data["config.yaml"]
 			Expect(configContent).To(ContainSubstring("guardrails"))
 			Expect(configContent).To(ContainSubstring("pii-guard-multi-mode"))
-			Expect(configContent).To(ContainSubstring("presidio-api"))
+			Expect(configContent).To(ContainSubstring("guardrail: presidio"))
 			Expect(configContent).To(ContainSubstring("pre_call"))
 			Expect(configContent).To(ContainSubstring("post_call"))
 			Expect(configContent).To(ContainSubstring("default_on: true"))
