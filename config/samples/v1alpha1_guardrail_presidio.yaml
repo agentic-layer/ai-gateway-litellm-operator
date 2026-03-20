@@ -1,0 +1,54 @@
+# Example: Presidio PII masking guardrail setup for an AiGateway.
+#
+# This sample demonstrates how to configure a Presidio-based PII guardrail.
+# Presidio requires the Analyzer and Anonymizer services to be running behind
+# a single URL (see presidio.yaml for an nginx-based reverse proxy setup).
+#
+# The GuardrailProvider.spec.presidio.baseUrl is used for both the Presidio
+# Analyzer and Anonymizer endpoints in the generated LiteLLM config.
+---
+# GuardrailProvider references the Presidio backend service.
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: GuardrailProvider
+metadata:
+  name: presidio
+  namespace: default
+spec:
+  type: presidio-api
+  presidio:
+    baseUrl: "http://presidio:80"
+---
+# Guard defines when the guardrail is applied and references the provider.
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: Guard
+metadata:
+  name: pii-guard
+  namespace: default
+spec:
+  mode:
+    - pre_call
+  description: Detect and mask PII in user inputs before they are sent to the LLM.
+  providerRef:
+    name: presidio
+    namespace: default
+---
+# AiGateway with Presidio guardrail enabled.
+# Routes to the WireMock mock LLM (apply wiremock/wiremock.yaml first).
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: AiGateway
+metadata:
+  name: ai-gateway-pii
+  namespace: default
+spec:
+  aiGatewayClassName: litellm
+  aiModels:
+    - provider: openai
+      name: gpt-3.5-turbo
+  env:
+    - name: OPENAI_API_BASE
+      value: http://wiremock:8080
+    - name: OPENAI_API_KEY
+      value: test-key
+  guardrails:
+    - name: pii-guard
+      namespace: default

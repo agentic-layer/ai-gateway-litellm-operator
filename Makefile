@@ -383,8 +383,18 @@ kind-load:
 
 ## Agent Runtime CRD configuration
 AGENT_RUNTIME_CRD_DIR = config/crd/external
-AGENT_RUNTIME_CRD_BASE_URL = https://raw.githubusercontent.com/agentic-layer/agent-runtime-operator/refs/tags/$(AGENT_RUNTIME_VERSION)/config/crd/bases
-AGENT_RUNTIME_CRD_FILES = runtime.agentic-layer.ai_aigateways.yaml runtime.agentic-layer.ai_aigatewayclasses.yaml
+# For pseudo-versions (e.g. v0.24.1-0.20260318131229-08f897b58ca1), extract the commit hash.
+# For tagged versions (e.g. v0.24.0), use refs/tags/<version>.
+AGENT_RUNTIME_GIT_REF := $(shell \
+	version="$(AGENT_RUNTIME_VERSION)"; \
+	if echo "$$version" | grep -qE -- '-[0-9]+\.[0-9]{14}-[0-9a-f]{12}$$'; then \
+		echo "$$version" | sed 's/.*-//'; \
+	else \
+		echo "refs/tags/$$version"; \
+	fi)
+AGENT_RUNTIME_CRD_BASE_URL = https://raw.githubusercontent.com/agentic-layer/agent-runtime-operator/$(AGENT_RUNTIME_GIT_REF)/config/crd/bases
+AGENT_RUNTIME_CRD_FILES = runtime.agentic-layer.ai_aigateways.yaml runtime.agentic-layer.ai_aigatewayclasses.yaml \
+	runtime.agentic-layer.ai_guards.yaml runtime.agentic-layer.ai_guardrailproviders.yaml
 AGENT_RUNTIME_CRDS = $(addprefix $(AGENT_RUNTIME_CRD_DIR)/,$(AGENT_RUNTIME_CRD_FILES))
 AGENT_RUNTIME_VERSION_FILE = $(AGENT_RUNTIME_CRD_DIR)/.version
 

@@ -2,4 +2,5 @@
 resources:
 - wiremock/wiremock.yaml
 - v1alpha1_aigateway.yaml
+- v1alpha1_guardrail_presidio.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

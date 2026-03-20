@@ -3,3 +3,5 @@ kind: Kustomization
 resources:
   - runtime.agentic-layer.ai_aigateways.yaml
   - runtime.agentic-layer.ai_aigatewayclasses.yaml
+  - runtime.agentic-layer.ai_guards.yaml
+  - runtime.agentic-layer.ai_guardrailproviders.yaml

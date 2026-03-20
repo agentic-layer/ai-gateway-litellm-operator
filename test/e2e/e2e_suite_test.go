@@ -101,9 +101,26 @@ var _ = BeforeSuite(func() {
 	_, err = utils.Run(exec.Command("kubectl", "apply", "-f", "config/samples/wiremock/wiremock.yaml"))
 	Expect(err).NotTo(HaveOccurred(), "Failed to deploy WireMock")
 
+	By("deploying Presidio PII detection services")
+	_, err = utils.Run(exec.Command("kubectl", "apply", "-f", "config/samples/presidio.yaml"))
+	Expect(err).NotTo(HaveOccurred(), "Failed to deploy Presidio services")
+
 	By("waiting for WireMock to be ready")
 	Expect(utils.VerifyDeploymentReady("wiremock", "default", 2*time.Minute)).
 		To(Succeed(), "WireMock deployment did not become ready")
+
+	By("waiting for Presidio proxy to be ready")
+	Expect(utils.VerifyDeploymentReady("presidio-proxy", "default", 5*time.Minute)).
+		To(Succeed(), "presidio-proxy deployment did not become ready")
+
+	By("waiting for Presidio anonymizer to be ready")
+	Expect(utils.VerifyDeploymentReady("presidio-anonymizer", "default", 5*time.Minute)).
+		To(Succeed(), "presidio-anonymizer deployment did not become ready")
+
+	// The analyzer loads spaCy NLP models on startup and can take several minutes.
+	By("waiting for Presidio analyzer to be ready")
+	Expect(utils.VerifyDeploymentReady("presidio-analyzer", "default", 10*time.Minute)).
+		To(Succeed(), "presidio-analyzer deployment did not become ready")
 
 	By("deploying the controller-manager")
 	_, err = utils.Run(exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage)))
@@ -120,6 +137,10 @@ var _ = AfterSuite(func() {
 	By("removing WireMock mock LLM provider")
 	_, _ = utils.Run(exec.Command("kubectl", "delete",
 		"-f", "config/samples/wiremock/wiremock.yaml", "--ignore-not-found=true"))
+
+	By("removing Presidio services")
+	_, _ = utils.Run(exec.Command("kubectl", "delete",
+		"-f", "config/samples/presidio.yaml", "--ignore-not-found=true"))
 
 	By("removing manager namespace")
 	_, _ = utils.Run(exec.Command("kubectl", "delete", "ns", namespace))
@@ -145,5 +166,13 @@ func fetchControllerManagerPodLogs() {
 		_, _ = fmt.Fprintf(GinkgoWriter, "Controller logs:\n %s", controllerLogs)
 	} else {
 		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Controller logs: %s", err)
+	}
+}
+
+func fetchPodLogs(label, namespace string, tail int) {
+	logs, err := utils.Run(exec.Command("kubectl", "logs",
+		"-l", label, "-n", namespace, fmt.Sprintf("--tail=%d", tail)))
+	if err == nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Logs for %s:\n%s", label, logs)
 	}
 }

@@ -91,8 +91,9 @@ const ControllerName = "aigateway.agentic-layer.ai/ai-gateway-litellm-controller
 
 // LiteLLMConfig configuration structs
 type LiteLLMConfig struct {
-	ModelList       []ModelConfig   `yaml:"model_list"`
-	LiteLLMSettings LiteLLMSettings `yaml:"litellm_settings,omitempty"`
+	ModelList       []ModelConfig     `yaml:"model_list"`
+	LiteLLMSettings LiteLLMSettings   `yaml:"litellm_settings,omitempty"`
+	Guardrails      []GuardrailConfig `yaml:"guardrails,omitempty"`
 }
 
 type ModelConfig struct {
@@ -110,6 +111,29 @@ type LiteLLMSettings struct {
 	Callbacks      []string `yaml:"callbacks,omitempty"`
 }
 
+// GuardrailConfig represents a single guardrail entry in the LiteLLM configuration.
+type GuardrailConfig struct {
+	GuardrailName string                 `yaml:"guardrail_name"`
+	LiteLLMParams GuardrailLiteLLMParams `yaml:"litellm_params"`
+}
+
+// GuardrailLiteLLMParams holds the LiteLLM-specific parameters for a guardrail.
+type GuardrailLiteLLMParams struct {
+	// Guardrail is the LiteLLM guardrail type identifier (e.g. "presidio").
+	Guardrail string `yaml:"guardrail"`
+	// Mode defines when the guardrail is applied. Multiple modes can be specified.
+	Mode []string `yaml:"mode"`
+	// DefaultOn ensures the guardrail is applied to every request without requiring
+	// explicit opt-in per call.
+	DefaultOn bool `yaml:"default_on"`
+	// PresidioAnalyzerApiBase is the URL of the Presidio Analyzer service.
+	// Only used when Guardrail is "presidio".
+	PresidioAnalyzerApiBase string `yaml:"presidio_analyzer_api_base,omitempty"`
+	// PresidioAnonymizerApiBase is the URL of the Presidio Anonymizer service.
+	// Only used when Guardrail is "presidio".
+	PresidioAnonymizerApiBase string `yaml:"presidio_anonymizer_api_base,omitempty"`
+}
+
 // AiGatewayReconciler reconciles an AiGateway object
 type AiGatewayReconciler struct {
 	client.Client
@@ -120,6 +144,8 @@ type AiGatewayReconciler struct {
 // +kubebuilder:rbac:groups=runtime.agentic-layer.ai,resources=aigateways/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=runtime.agentic-layer.ai,resources=aigateways/finalizers,verbs=update
 // +kubebuilder:rbac:groups=runtime.agentic-layer.ai,resources=aigatewayclasses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=runtime.agentic-layer.ai,resources=guards,verbs=get;list;watch
+// +kubebuilder:rbac:groups=runtime.agentic-layer.ai,resources=guardrailproviders,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
@@ -285,6 +311,12 @@ func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGat
 		modelList[i] = modelConfig
 	}
 
+	// Resolve guardrails from referenced Guard and GuardrailProvider resources
+	guardrails, err := r.resolveGuardrails(ctx, aiGateway)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to resolve guardrails: %w", err)
+	}
+
 	// Build complete configuration with settings
 	config := LiteLLMConfig{
 		ModelList: modelList,
@@ -294,6 +326,7 @@ func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGat
 			// (see https://docs.litellm.ai/docs/proxy/logging#opentelemetry)
 			Callbacks: []string{"otel", "prometheus"},
 		},
+		Guardrails: guardrails,
 	}
 
 	// Generate YAML configuration
@@ -306,9 +339,87 @@ func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGat
 	hash := sha256.Sum256(configYAML)
 	configHash := fmt.Sprintf("%x", hash)[:16]
 
-	log.Info("Generated LiteLLM configuration", "aiGateway", aiGateway.Name, "models", len(aiGateway.Spec.AiModels), "configHash", configHash[:8])
+	log.Info("Generated LiteLLM configuration", "aiGateway", aiGateway.Name, "models", len(aiGateway.Spec.AiModels), "guardrails", len(guardrails), "configHash", configHash[:8])
 
 	return string(configYAML), configHash, nil
+}
+
+// resolveGuardrails fetches all Guard resources referenced in the AiGateway spec and maps
+// them to LiteLLM guardrail configuration entries.
+func (r *AiGatewayReconciler) resolveGuardrails(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway) ([]GuardrailConfig, error) {
+	log := logf.FromContext(ctx)
+
+	if len(aiGateway.Spec.Guardrails) == 0 {
+		return nil, nil
+	}
+
+	guardrails := make([]GuardrailConfig, 0, len(aiGateway.Spec.Guardrails))
+	for _, ref := range aiGateway.Spec.Guardrails {
+		namespace := ref.Namespace
+		if namespace == "" {
+			namespace = aiGateway.Namespace
+		}
+
+		var guard gatewayv1alpha1.Guard
+		if err := r.Get(ctx, types.NamespacedName{Name: ref.Name, Namespace: namespace}, &guard); err != nil {
+			return nil, fmt.Errorf("failed to get Guard %s/%s: %w", namespace, ref.Name, err)
+		}
+
+		providerNamespace := guard.Spec.ProviderRef.Namespace
+		if providerNamespace == "" {
+			providerNamespace = guard.Namespace
+		}
+		providerName := guard.Spec.ProviderRef.Name
+
+		var provider gatewayv1alpha1.GuardrailProvider
+		if err := r.Get(ctx, types.NamespacedName{Name: providerName, Namespace: providerNamespace}, &provider); err != nil {
+			return nil, fmt.Errorf("failed to get GuardrailProvider %s/%s referenced by Guard %s: %w",
+				providerNamespace, providerName, guard.Name, err)
+		}
+
+		guardrailCfg, err := r.buildGuardrailConfig(&guard, &provider)
+		if err != nil {
+			log.Error(err, "Skipping unsupported guardrail", "guard", guard.Name, "type", provider.Spec.Type)
+			continue
+		}
+		guardrails = append(guardrails, guardrailCfg)
+	}
+
+	return guardrails, nil
+}
+
+// buildGuardrailConfig maps a Guard and its GuardrailProvider to a LiteLLM GuardrailConfig.
+func (r *AiGatewayReconciler) buildGuardrailConfig(guard *gatewayv1alpha1.Guard, provider *gatewayv1alpha1.GuardrailProvider) (GuardrailConfig, error) {
+	// Convert []GuardMode to []string for the LiteLLM YAML config.
+	modes := make([]string, len(guard.Spec.Mode))
+	for i, m := range guard.Spec.Mode {
+		modes[i] = string(m)
+	}
+
+	params := GuardrailLiteLLMParams{
+		Mode:      modes,
+		DefaultOn: true,
+	}
+
+	switch provider.Spec.Type {
+	case "presidio-api":
+		if provider.Spec.Presidio == nil {
+			return GuardrailConfig{}, fmt.Errorf("GuardrailProvider %s has type presidio-api but no presidio config", provider.Name)
+		}
+		// The CRD type is "presidio-api" but LiteLLM expects "presidio" as the guardrail identifier.
+		params.Guardrail = "presidio"
+		// Presidio requires both an Analyzer and an Anonymizer endpoint. The CRD provides a
+		// single baseUrl for the Presidio service, which is used for both.
+		params.PresidioAnalyzerApiBase = provider.Spec.Presidio.BaseUrl
+		params.PresidioAnonymizerApiBase = provider.Spec.Presidio.BaseUrl
+	default:
+		return GuardrailConfig{}, fmt.Errorf("unsupported guardrail provider type %q for guard %s", provider.Spec.Type, guard.Name)
+	}
+
+	return GuardrailConfig{
+		GuardrailName: guard.Name,
+		LiteLLMParams: params,
+	}, nil
 }
 
 func (r *AiGatewayReconciler) getProviderApiKeyEnvVar(model gatewayv1alpha1.AiModel) string {
@@ -890,6 +1001,27 @@ func buildPodTemplateAnnotations(aiGateway *gatewayv1alpha1.AiGateway, configHas
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AiGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// enqueueAiGatewaysInNamespace enqueues reconcile requests for all AiGateway objects in
+	// the namespace of the triggering object.
+	enqueueAiGatewaysInNamespace := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		log := logf.FromContext(ctx)
+		var aiGatewayList gatewayv1alpha1.AiGatewayList
+		if err := r.List(ctx, &aiGatewayList, client.InNamespace(obj.GetNamespace())); err != nil {
+			log.Error(err, "Failed to list AiGateways for re-queuing", "namespace", obj.GetNamespace(), "trigger", obj.GetName())
+			return nil
+		}
+		requests := make([]reconcile.Request, len(aiGatewayList.Items))
+		for i, gw := range aiGatewayList.Items {
+			requests[i] = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      gw.Name,
+					Namespace: gw.Namespace,
+				},
+			}
+		}
+		return requests
+	})
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gatewayv1alpha1.AiGateway{}).
 		Owns(&appsv1.Deployment{}).
@@ -919,6 +1051,11 @@ func (r *AiGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return requests
 			}),
 		).
+		// Watch Guard changes so that updates to a Guard trigger re-reconciliation of all
+		// AiGateway resources in the same namespace that may reference it.
+		Watches(&gatewayv1alpha1.Guard{}, enqueueAiGatewaysInNamespace).
+		// Watch GuardrailProvider changes for the same reason.
+		Watches(&gatewayv1alpha1.GuardrailProvider{}, enqueueAiGatewaysInNamespace).
 		Named(ControllerName).
 		Complete(r)
 }
