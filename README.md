@@ -77,7 +77,7 @@ kind: AiGateway
 metadata:
   name: my-litellm
 spec:
-  AiGatewayClassName: litellm
+  aiGatewayClassName: litellm
   aiModels:
     - provider: openai
       name: gpt-3.5-turbo
