@@ -26,7 +26,6 @@ import (
 
 	gatewayv1alpha1 "github.com/agentic-layer/agent-runtime-operator/api/v1alpha1"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/controller/utils"
-	"github.com/agentic-layer/ai-gateway-litellm/internal/equality"
 	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -460,49 +459,35 @@ func (r *AiGatewayReconciler) reconcileConfigMap(ctx context.Context, aiGateway 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-config", aiGateway.Name),
 			Namespace: aiGateway.Namespace,
-			Labels: map[string]string{
-				"app": aiGateway.Name,
-			},
 		},
-		Data: map[string]string{
+	}
+
+	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, configMap, func() error {
+		// Set owner reference
+		if err := controllerutil.SetControllerReference(aiGateway, configMap, r.Scheme); err != nil {
+			return err
+		}
+
+		// Set labels
+		if configMap.Labels == nil {
+			configMap.Labels = make(map[string]string)
+		}
+		configMap.Labels["app"] = aiGateway.Name
+
+		// Set data
+		configMap.Data = map[string]string{
 			"config.yaml": configData,
-		},
-	}
-
-	// Set owner reference
-	if err := controllerutil.SetControllerReference(aiGateway, configMap, r.Scheme); err != nil {
-		return fmt.Errorf("failed to set owner reference: %w", err)
-	}
-
-	// Check if ConfigMap exists
-	existing := &corev1.ConfigMap{}
-	err := r.Get(ctx, types.NamespacedName{Name: configMap.Name, Namespace: configMap.Namespace}, existing)
-
-	if err != nil && errors.IsNotFound(err) {
-		log.Info("Creating ConfigMap", "name", configMap.Name)
-		return r.Create(ctx, configMap)
-	} else if err != nil {
-		return fmt.Errorf("failed to get ConfigMap: %w", err)
-	}
-
-	// Update if needed using equality utilities
-	needsUpdate := existing.Data["config.yaml"] != configData
-
-	if !equality.RequiredLabelsPresent(existing.Labels, configMap.Labels) {
-		needsUpdate = true
-	}
-
-	if needsUpdate {
-		log.Info("Updating ConfigMap", "name", configMap.Name)
-		existing.Data = configMap.Data
-		// Only update our required labels, preserve others
-		if existing.Labels == nil {
-			existing.Labels = make(map[string]string)
 		}
-		for key, value := range configMap.Labels {
-			existing.Labels[key] = value
-		}
-		return r.Update(ctx, existing)
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to reconcile ConfigMap: %w", err)
+	}
+
+	if result != controllerutil.OperationResultNone {
+		log.Info("ConfigMap reconciled", "name", configMap.Name, "operation", result)
 	}
 
 	return nil
@@ -520,237 +505,164 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        aiGateway.Name,
-			Namespace:   aiGateway.Namespace,
-			Labels:      deploymentLabels,
-			Annotations: deploymentAnnotations,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": aiGateway.Name,
-				},
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels:      podTemplateLabels,
-					Annotations: podTemplateAnnotations,
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  liteLLMContainerName,
-							Image: litellmImage,
-							Ports: []corev1.ContainerPort{
-								{
-									Name:          "http",
-									ContainerPort: aiGateway.Spec.Port,
-									Protocol:      corev1.ProtocolTCP,
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "config",
-									MountPath: "/app/config",
-									ReadOnly:  true,
-								},
-								{
-									Name:      prometheusMultiprocVolumeName,
-									MountPath: prometheusMultiprocDir,
-								},
-							},
-							Command: []string{
-								"litellm",
-								"--config",
-								"/app/config/config.yaml",
-								"--port",
-								strconv.Itoa(int(aiGateway.Spec.Port)),
-							},
-							Env:     r.buildEnvironmentVariables(aiGateway),
-							EnvFrom: aiGateway.Spec.EnvFrom,
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceMemory: resource.MustParse("250M"),
-									corev1.ResourceCPU:    resource.MustParse("100m"),
-								},
-								Limits: corev1.ResourceList{
-									corev1.ResourceMemory: resource.MustParse("1G"),
-									corev1.ResourceCPU:    resource.MustParse("500m"),
-								},
-							},
-							// LiteLLM health check endpoints: /health/liveliness and /health/readiness
-							// Note: LiteLLM uses "liveliness" (not "liveness") in their API
-							LivenessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Path:   "/health/liveliness",
-										Port:   intstr.FromInt32(aiGateway.Spec.Port),
-										Scheme: corev1.URISchemeHTTP,
-									},
-								},
-								InitialDelaySeconds: 30,
-								PeriodSeconds:       10,
-								TimeoutSeconds:      5,
-								SuccessThreshold:    1,
-								FailureThreshold:    10,
-							},
-							ReadinessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Path:   "/health/readiness",
-										Port:   intstr.FromInt32(aiGateway.Spec.Port),
-										Scheme: corev1.URISchemeHTTP,
-									},
-								},
-								InitialDelaySeconds: 5,
-								PeriodSeconds:       10,
-								TimeoutSeconds:      5,
-								SuccessThreshold:    1,
-								FailureThreshold:    3,
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "config",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: fmt.Sprintf("%s-config", aiGateway.Name),
-									},
-								},
-							},
-						},
-						{
-							Name: prometheusMultiprocVolumeName,
-							VolumeSource: corev1.VolumeSource{
-								EmptyDir: &corev1.EmptyDirVolumeSource{},
-							},
-						},
-					},
-				},
-			},
+			Name:      aiGateway.Name,
+			Namespace: aiGateway.Namespace,
 		},
 	}
 
-	// Set owner reference
-	if err := controllerutil.SetControllerReference(aiGateway, deployment, r.Scheme); err != nil {
-		return fmt.Errorf("failed to set owner reference: %w", err)
+	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {
+		// Set owner reference
+		if err := controllerutil.SetControllerReference(aiGateway, deployment, r.Scheme); err != nil {
+			return err
+		}
+
+		// Set labels
+		if deployment.Labels == nil {
+			deployment.Labels = make(map[string]string)
+		}
+		for key, value := range deploymentLabels {
+			deployment.Labels[key] = value
+		}
+
+		// Set annotations
+		if deployment.Annotations == nil {
+			deployment.Annotations = make(map[string]string)
+		}
+		for key, value := range deploymentAnnotations {
+			deployment.Annotations[key] = value
+		}
+
+		// Set spec
+		deployment.Spec.Replicas = &replicas
+		deployment.Spec.Selector = &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				"app": aiGateway.Name,
+			},
+		}
+
+		// Set template labels
+		if deployment.Spec.Template.Labels == nil {
+			deployment.Spec.Template.Labels = make(map[string]string)
+		}
+		for key, value := range podTemplateLabels {
+			deployment.Spec.Template.Labels[key] = value
+		}
+
+		// Set template annotations
+		if deployment.Spec.Template.Annotations == nil {
+			deployment.Spec.Template.Annotations = make(map[string]string)
+		}
+		for key, value := range podTemplateAnnotations {
+			deployment.Spec.Template.Annotations[key] = value
+		}
+
+		// Find or create the litellm container
+		container := utils.FindContainerByName(deployment.Spec.Template.Spec.Containers, liteLLMContainerName)
+		if container == nil {
+			deployment.Spec.Template.Spec.Containers = append(deployment.Spec.Template.Spec.Containers, corev1.Container{
+				Name: liteLLMContainerName,
+			})
+			container = &deployment.Spec.Template.Spec.Containers[len(deployment.Spec.Template.Spec.Containers)-1]
+		}
+
+		container.Image = litellmImage
+		container.Ports = []corev1.ContainerPort{
+			{
+				Name:          "http",
+				ContainerPort: aiGateway.Spec.Port,
+				Protocol:      corev1.ProtocolTCP,
+			},
+		}
+		container.VolumeMounts = []corev1.VolumeMount{
+			{
+				Name:      "config",
+				MountPath: "/app/config",
+				ReadOnly:  true,
+			},
+			{
+				Name:      prometheusMultiprocVolumeName,
+				MountPath: prometheusMultiprocDir,
+			},
+		}
+		container.Command = []string{
+			"litellm",
+			"--config",
+			"/app/config/config.yaml",
+			"--port",
+			strconv.Itoa(int(aiGateway.Spec.Port)),
+		}
+		container.Env = r.buildEnvironmentVariables(aiGateway)
+		container.EnvFrom = aiGateway.Spec.EnvFrom
+		container.Resources = corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("250M"),
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+			},
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("1G"),
+				corev1.ResourceCPU:    resource.MustParse("500m"),
+			},
+		}
+		// LiteLLM health check endpoints: /health/liveliness and /health/readiness
+		// Note: LiteLLM uses "liveliness" (not "liveness") in their API
+		container.LivenessProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   "/health/liveliness",
+					Port:   intstr.FromInt32(aiGateway.Spec.Port),
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			InitialDelaySeconds: 30,
+			PeriodSeconds:       10,
+			TimeoutSeconds:      5,
+			SuccessThreshold:    1,
+			FailureThreshold:    10,
+		}
+		container.ReadinessProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   "/health/readiness",
+					Port:   intstr.FromInt32(aiGateway.Spec.Port),
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			InitialDelaySeconds: 5,
+			PeriodSeconds:       10,
+			TimeoutSeconds:      5,
+			SuccessThreshold:    1,
+			FailureThreshold:    3,
+		}
+
+		// Set volumes
+		deployment.Spec.Template.Spec.Volumes = []corev1.Volume{
+			{
+				Name: "config",
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: fmt.Sprintf("%s-config", aiGateway.Name),
+						},
+					},
+				},
+			},
+			{
+				Name: prometheusMultiprocVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
+			},
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to reconcile Deployment: %w", err)
 	}
 
-	// Check if Deployment exists
-	existing := &appsv1.Deployment{}
-	err := r.Get(ctx, types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, existing)
-
-	if err != nil && errors.IsNotFound(err) {
-		log.Info("Creating Deployment", "name", deployment.Name)
-		return r.Create(ctx, deployment)
-	} else if err != nil {
-		return fmt.Errorf("failed to get Deployment: %w", err)
-	}
-
-	// Update if needed using equality utilities
-	needsUpdate := !equality.RequiredLabelsPresent(existing.Labels, deployment.Labels)
-
-	// Check deployment annotations for changes
-	if !equality.RequiredLabelsPresent(existing.Annotations, deployment.Annotations) {
-		needsUpdate = true
-	}
-
-	// Check template labels for changes
-	if !equality.RequiredLabelsPresent(existing.Spec.Template.Labels, deployment.Spec.Template.Labels) {
-		needsUpdate = true
-	}
-
-	// Check template annotations for changes (includes config hash and user-provided annotations)
-	if !equality.RequiredLabelsPresent(existing.Spec.Template.Annotations, deployment.Spec.Template.Annotations) {
-		needsUpdate = true
-	}
-
-	// Check environment variables for changes
-	existingContainer := utils.FindContainerByName(existing.Spec.Template.Spec.Containers, liteLLMContainerName)
-	desiredContainer := utils.FindContainerByName(deployment.Spec.Template.Spec.Containers, liteLLMContainerName)
-
-	if existingContainer != nil && desiredContainer != nil {
-		if !equality.EnvVarsEqual(existingContainer.Env, desiredContainer.Env) {
-			needsUpdate = true
-		}
-
-		// Check EnvFrom for changes
-		if !equality.EnvFromEqual(existingContainer.EnvFrom, desiredContainer.EnvFrom) {
-			needsUpdate = true
-		}
-
-		// Check image changes
-		if existingContainer.Image != desiredContainer.Image {
-			needsUpdate = true
-		}
-
-		// Check port configuration changes
-		existingPorts := existingContainer.Ports
-		newPorts := desiredContainer.Ports
-		if len(existingPorts) != len(newPorts) {
-			needsUpdate = true
-		} else if len(existingPorts) > 0 && len(newPorts) > 0 {
-			// Check if the main container port changed
-			if existingPorts[0].ContainerPort != newPorts[0].ContainerPort {
-				needsUpdate = true
-			}
-		}
-
-		// Check resource requirements changes
-		if !equality.ResourceRequirementsEqual(existingContainer.Resources, desiredContainer.Resources) {
-			needsUpdate = true
-		}
-
-		// Check liveness probe changes
-		if !equality.ProbesEqual(existingContainer.LivenessProbe, desiredContainer.LivenessProbe) {
-			needsUpdate = true
-		}
-
-		// Check readiness probe changes
-		if !equality.ProbesEqual(existingContainer.ReadinessProbe, desiredContainer.ReadinessProbe) {
-			needsUpdate = true
-		}
-	}
-
-	if needsUpdate {
-		log.Info("Updating Deployment", "name", deployment.Name)
-		// Only update our required labels, preserve others
-		if existing.Labels == nil {
-			existing.Labels = make(map[string]string)
-		}
-		for key, value := range deployment.Labels {
-			existing.Labels[key] = value
-		}
-		// Update deployment annotations
-		if deployment.Annotations != nil {
-			if existing.Annotations == nil {
-				existing.Annotations = make(map[string]string)
-			}
-			for key, value := range deployment.Annotations {
-				existing.Annotations[key] = value
-			}
-		}
-		// Update template labels and annotations
-		if existing.Spec.Template.Labels == nil {
-			existing.Spec.Template.Labels = make(map[string]string)
-		}
-		for key, value := range deployment.Spec.Template.Labels {
-			existing.Spec.Template.Labels[key] = value
-		}
-		if existing.Spec.Template.Annotations == nil {
-			existing.Spec.Template.Annotations = make(map[string]string)
-		}
-		for key, value := range deployment.Spec.Template.Annotations {
-			existing.Spec.Template.Annotations[key] = value
-		}
-		// Update the rest of the spec
-		existing.Spec.Replicas = deployment.Spec.Replicas
-		existing.Spec.Selector = deployment.Spec.Selector
-		existing.Spec.Template.Spec = deployment.Spec.Template.Spec
-		return r.Update(ctx, existing)
+	if result != controllerutil.OperationResultNone {
+		log.Info("Deployment reconciled", "name", deployment.Name, "operation", result)
 	}
 
 	return nil
@@ -765,77 +677,56 @@ func (r *AiGatewayReconciler) reconcileService(ctx context.Context, aiGateway *g
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        aiGateway.Name,
-			Namespace:   aiGateway.Namespace,
-			Labels:      serviceLabels,
-			Annotations: serviceAnnotations,
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: map[string]string{
-				"app": aiGateway.Name,
-			},
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "http",
-					Port:       aiGateway.Spec.Port,
-					TargetPort: intstr.FromInt32(aiGateway.Spec.Port),
-					Protocol:   corev1.ProtocolTCP,
-				},
-			},
-			Type: corev1.ServiceTypeClusterIP,
+			Name:      aiGateway.Name,
+			Namespace: aiGateway.Namespace,
 		},
 	}
 
-	// Set owner reference
-	if err := controllerutil.SetControllerReference(aiGateway, service, r.Scheme); err != nil {
-		return fmt.Errorf("failed to set owner reference: %w", err)
-	}
-
-	// Check if Service exists
-	existing := &corev1.Service{}
-	err := r.Get(ctx, types.NamespacedName{Name: service.Name, Namespace: service.Namespace}, existing)
-
-	if err != nil && errors.IsNotFound(err) {
-		log.Info("Creating Service", "name", service.Name)
-		return r.Create(ctx, service)
-	} else if err != nil {
-		return fmt.Errorf("failed to get Service: %w", err)
-	}
-
-	// Update if needed using equality utilities
-	needsUpdate := !equality.RequiredLabelsPresent(existing.Labels, service.Labels)
-
-	// Check service annotations for changes
-	if !equality.RequiredLabelsPresent(existing.Annotations, service.Annotations) {
-		needsUpdate = true
-	}
-
-	// Check ports for changes (safe checking)
-	if len(existing.Spec.Ports) > 0 && len(service.Spec.Ports) > 0 &&
-		existing.Spec.Ports[0].Port != service.Spec.Ports[0].Port {
-		needsUpdate = true
-	}
-
-	if needsUpdate {
-		log.Info("Updating Service", "name", service.Name)
-		existing.Spec.Ports = service.Spec.Ports
-		// Only update our required labels, preserve others
-		if existing.Labels == nil {
-			existing.Labels = make(map[string]string)
+	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {
+		// Set owner reference
+		if err := controllerutil.SetControllerReference(aiGateway, service, r.Scheme); err != nil {
+			return err
 		}
-		for key, value := range service.Labels {
-			existing.Labels[key] = value
+
+		// Set labels
+		if service.Labels == nil {
+			service.Labels = make(map[string]string)
 		}
-		// Update service annotations
-		if service.Annotations != nil {
-			if existing.Annotations == nil {
-				existing.Annotations = make(map[string]string)
-			}
-			for key, value := range service.Annotations {
-				existing.Annotations[key] = value
-			}
+		for key, value := range serviceLabels {
+			service.Labels[key] = value
 		}
-		return r.Update(ctx, existing)
+
+		// Set annotations
+		if service.Annotations == nil {
+			service.Annotations = make(map[string]string)
+		}
+		for key, value := range serviceAnnotations {
+			service.Annotations[key] = value
+		}
+
+		// Set spec
+		service.Spec.Selector = map[string]string{
+			"app": aiGateway.Name,
+		}
+		service.Spec.Ports = []corev1.ServicePort{
+			{
+				Name:       "http",
+				Port:       aiGateway.Spec.Port,
+				TargetPort: intstr.FromInt32(aiGateway.Spec.Port),
+				Protocol:   corev1.ProtocolTCP,
+			},
+		}
+		service.Spec.Type = corev1.ServiceTypeClusterIP
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to reconcile Service: %w", err)
+	}
+
+	if result != controllerutil.OperationResultNone {
+		log.Info("Service reconciled", "name", service.Name, "operation", result)
 	}
 
 	return nil
@@ -860,11 +751,14 @@ func (r *AiGatewayReconciler) buildEnvironmentVariables(aiGateway *gatewayv1alph
 		envMap[env.Name] = env
 	}
 
-	// Convert map to slice
+	// Convert map to sorted slice for deterministic ordering
 	envVars := make([]corev1.EnvVar, 0, len(envMap))
 	for _, env := range envMap {
 		envVars = append(envVars, env)
 	}
+	sort.Slice(envVars, func(i, j int) bool {
+		return envVars[i].Name < envVars[j].Name
+	})
 	return envVars
 }
 
