@@ -126,12 +126,26 @@ type GuardrailLiteLLMParams struct {
 	// DefaultOn ensures the guardrail is applied to every request without requiring
 	// explicit opt-in per call.
 	DefaultOn bool `yaml:"default_on"`
+	// OutputParsePii enables automatic unmasking of PII tokens in LLM responses.
+	// When true, masked tokens (e.g. <PERSON_1>) are replaced with original values.
+	// Only used when Guardrail is "presidio".
+	OutputParsePii bool `yaml:"output_parse_pii,omitempty"`
 	// PresidioAnalyzerApiBase is the URL of the Presidio Analyzer service.
 	// Only used when Guardrail is "presidio".
 	PresidioAnalyzerApiBase string `yaml:"presidio_analyzer_api_base,omitempty"`
 	// PresidioAnonymizerApiBase is the URL of the Presidio Anonymizer service.
 	// Only used when Guardrail is "presidio".
 	PresidioAnonymizerApiBase string `yaml:"presidio_anonymizer_api_base,omitempty"`
+	// PresidioLanguage is the language code for PII detection (e.g. "en", "de").
+	// Only used when Guardrail is "presidio".
+	PresidioLanguage string `yaml:"presidio_language,omitempty"`
+	// PresidioScoreThresholds maps entity types to minimum confidence scores (0.0 to 1.0).
+	// Use "ALL" as key to set a default threshold for all entity types.
+	// Only used when Guardrail is "presidio".
+	PresidioScoreThresholds map[string]string `yaml:"presidio_score_thresholds,omitempty"`
+	// PiiEntitiesConfig maps PII entity types to actions ("MASK" or "BLOCK").
+	// Only used when Guardrail is "presidio".
+	PiiEntitiesConfig map[string]string `yaml:"pii_entities_config,omitempty"`
 }
 
 // AiGatewayReconciler reconciles an AiGateway object
@@ -412,6 +426,18 @@ func (r *AiGatewayReconciler) buildGuardrailConfig(guard *gatewayv1alpha1.Guard,
 		// single baseUrl for the Presidio service, which is used for both.
 		params.PresidioAnalyzerApiBase = provider.Spec.Presidio.BaseUrl
 		params.PresidioAnonymizerApiBase = provider.Spec.Presidio.BaseUrl
+		// Enable output parsing by default so masked PII tokens in LLM responses
+		// (e.g. <PERSON_1>) are replaced with original values before returning to the user.
+		params.OutputParsePii = true
+		if guard.Spec.Presidio != nil {
+			params.PresidioLanguage = guard.Spec.Presidio.Language
+			if len(guard.Spec.Presidio.ScoreThresholds) > 0 {
+				params.PresidioScoreThresholds = guard.Spec.Presidio.ScoreThresholds
+			}
+			if len(guard.Spec.Presidio.EntityActions) > 0 {
+				params.PiiEntitiesConfig = guard.Spec.Presidio.EntityActions
+			}
+		}
 	default:
 		return GuardrailConfig{}, fmt.Errorf("unsupported guardrail provider type %q for guard %s", provider.Spec.Type, guard.Name)
 	}
