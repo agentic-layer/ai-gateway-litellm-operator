@@ -31,6 +31,15 @@ spec:
   providerRef:
     name: presidio
     namespace: default
+  presidio:
+    language: en
+    scoreThresholds:
+      ALL: "0.5"
+    entityActions:
+      PHONE_NUMBER: MASK
+      EMAIL_ADDRESS: MASK
+      CREDIT_CARD: MASK
+      PERSON: MASK
 ---
 # AiGateway with Presidio guardrail enabled.
 # Routes to the WireMock mock LLM (apply wiremock/wiremock.yaml first).

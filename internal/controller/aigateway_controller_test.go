@@ -560,6 +560,7 @@ var _ = Describe("AiGateway Controller", func() {
 			Expect(configContent).To(ContainSubstring("default_on: true"))
 			Expect(configContent).To(ContainSubstring("presidio_analyzer_api_base: http://presidio.example.com:80"))
 			Expect(configContent).To(ContainSubstring("presidio_anonymizer_api_base: http://presidio.example.com:80"))
+			Expect(configContent).To(ContainSubstring("output_parse_pii: true"))
 		})
 	})
 
@@ -676,6 +677,132 @@ var _ = Describe("AiGateway Controller", func() {
 			Expect(configContent).To(ContainSubstring("post_call"))
 			Expect(configContent).To(ContainSubstring("default_on: true"))
 			Expect(configContent).To(ContainSubstring("presidio_analyzer_api_base: http://presidio.example.com:3000"))
+		})
+	})
+
+	Context("When reconciling an AiGateway with Presidio guard-level config", func() {
+		var aiGateway *gatewayv1alpha1.AiGateway
+		var gatewayNamespacedName types.NamespacedName
+		var classNamespacedName types.NamespacedName
+		var guardNamespacedName types.NamespacedName
+		var providerNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			gatewayNamespacedName = types.NamespacedName{Name: "test-gateway-guardrails-config", Namespace: testNamespace}
+			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName, Namespace: testNamespace}
+			guardNamespacedName = types.NamespacedName{Name: "pii-guard-config", Namespace: testNamespace}
+			providerNamespacedName = types.NamespacedName{Name: "presidio-provider-config", Namespace: testNamespace}
+
+			createDefaultClass(classNamespacedName)
+
+			By("Creating a GuardrailProvider with presidio-api type")
+			provider := &gatewayv1alpha1.GuardrailProvider{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      providerNamespacedName.Name,
+					Namespace: testNamespace,
+				},
+				Spec: gatewayv1alpha1.GuardrailProviderSpec{
+					Type: "presidio-api",
+					Presidio: &gatewayv1alpha1.PresidioProviderConfig{
+						BaseUrl: "http://presidio.example.com:80",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, provider)).To(Succeed())
+
+			By("Creating a Guard with presidio-specific config")
+			guard := &gatewayv1alpha1.Guard{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      guardNamespacedName.Name,
+					Namespace: testNamespace,
+				},
+				Spec: gatewayv1alpha1.GuardSpec{
+					Mode:        []gatewayv1alpha1.GuardMode{gatewayv1alpha1.GuardModePreCall},
+					Description: "PII masking with entities and threshold",
+					ProviderRef: corev1.ObjectReference{
+						Name:      providerNamespacedName.Name,
+						Namespace: testNamespace,
+					},
+					Presidio: &gatewayv1alpha1.PresidioGuardConfig{
+						EntityActions: map[string]string{
+							"PHONE_NUMBER":  "MASK",
+							"EMAIL_ADDRESS": "MASK",
+						},
+						Language: "de",
+						ScoreThresholds: map[string]string{
+							"ALL": "0.7",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, guard)).To(Succeed())
+
+			By("Creating an AiGateway referencing the Guard")
+			aiGateway = &gatewayv1alpha1.AiGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      gatewayNamespacedName.Name,
+					Namespace: testNamespace,
+				},
+				Spec: gatewayv1alpha1.AiGatewaySpec{
+					Port: testPort,
+					AiModels: []gatewayv1alpha1.AiModel{
+						{Name: "gpt-3.5-turbo", Provider: "openai"},
+					},
+					Guardrails: []corev1.ObjectReference{
+						{Name: guardNamespacedName.Name, Namespace: testNamespace},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, aiGateway)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			cleanupAiGateway(gatewayNamespacedName)
+			cleanupAiGatewayClass(classNamespacedName)
+
+			By("Cleaning up the Guard resource")
+			guard := &gatewayv1alpha1.Guard{}
+			if err := k8sClient.Get(ctx, guardNamespacedName, guard); err == nil {
+				Expect(k8sClient.Delete(ctx, guard)).To(Succeed())
+			}
+
+			By("Cleaning up the GuardrailProvider resource")
+			provider := &gatewayv1alpha1.GuardrailProvider{}
+			if err := k8sClient.Get(ctx, providerNamespacedName, provider); err == nil {
+				Expect(k8sClient.Delete(ctx, provider)).To(Succeed())
+			}
+		})
+
+		It("should map entities to pii_entities_config and score threshold to presidio_score_thresholds", func() {
+			By("Reconciling the created resource")
+			reconciler := &AiGatewayReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: gatewayNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal(reconcile.Result{}))
+
+			By("Verifying ConfigMap contains correct LiteLLM field names")
+			configMap := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      gatewayNamespacedName.Name + "-config",
+				Namespace: testNamespace,
+			}, configMap)).To(Succeed())
+
+			configContent := configMap.Data["config.yaml"]
+			Expect(configContent).To(ContainSubstring("pii_entities_config"))
+			Expect(configContent).To(ContainSubstring("PHONE_NUMBER: MASK"))
+			Expect(configContent).To(ContainSubstring("EMAIL_ADDRESS: MASK"))
+			Expect(configContent).To(ContainSubstring("presidio_score_thresholds"))
+			Expect(configContent).To(ContainSubstring("ALL: \"0.7\""))
+			Expect(configContent).To(ContainSubstring("presidio_language: de"))
+			// Verify old field names are NOT present
+			Expect(configContent).NotTo(ContainSubstring("presidio_entities:"))
+			Expect(configContent).NotTo(ContainSubstring("presidio_score_threshold:"))
 		})
 	})
 

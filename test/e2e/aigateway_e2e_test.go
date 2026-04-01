@@ -249,10 +249,10 @@ var _ = Describe("AiGateway", Ordered, func() {
 			Expect(forwarded.Messages).To(HaveLen(1))
 
 			content := forwarded.Messages[0].Content
-			Expect(content).To(ContainSubstring("<PERSON>"),
-				"Name should be replaced with <PERSON> placeholder")
-			Expect(content).To(ContainSubstring("<EMAIL_ADDRESS>"),
-				"Email should be replaced with <EMAIL_ADDRESS> placeholder")
+			Expect(content).To(MatchRegexp(`<PERSON[^>]*>`),
+				"Name should be replaced with <PERSON> or <PERSON_N> placeholder")
+			Expect(content).To(MatchRegexp(`<EMAIL_ADDRESS[^>]*>`),
+				"Email should be replaced with <EMAIL_ADDRESS> or <EMAIL_ADDRESS_N> placeholder")
 			Expect(content).NotTo(ContainSubstring("John Smith"),
 				"Original name must not be present")
 			Expect(content).NotTo(ContainSubstring("john.smith@example.com"),
