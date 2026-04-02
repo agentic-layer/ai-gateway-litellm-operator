@@ -26,7 +26,7 @@ import (
 
 	gatewayv1alpha1 "github.com/agentic-layer/agent-runtime-operator/api/v1alpha1"
 	"github.com/agentic-layer/ai-gateway-litellm/internal/controller/utils"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
