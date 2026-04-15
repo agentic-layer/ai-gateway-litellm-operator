@@ -1,36 +1,49 @@
 # Example: Presidio PII masking guardrail setup for an AiGateway.
 #
-# This sample demonstrates how to configure a Presidio-based PII guardrail.
-# Presidio requires the Analyzer and Anonymizer services to be running behind
-# a single URL (see presidio.yaml for an nginx-based reverse proxy setup).
+# This sample demonstrates how to configure a Presidio-based PII guardrail
+# with cross-namespace references. The GuardrailProvider, Guard, and AiGateway
+# each live in separate namespaces to verify cross-namespace resolution:
+#   - GuardrailProvider + Presidio services: "guardrail-providers" namespace
+#   - Guard: "guards" namespace
+#   - AiGateway: "default" namespace
 #
-# The GuardrailProvider.spec.presidio.baseUrl is used for both the Presidio
-# Analyzer and Anonymizer endpoints in the generated LiteLLM config.
+# The GuardrailProvider.spec.presidio.baseUrl uses a cross-namespace DNS name
+# so that LiteLLM (running in the AiGateway's namespace) can reach Presidio.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: guardrail-providers
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: guards
 ---
 # GuardrailProvider references the Presidio backend service.
 apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: GuardrailProvider
 metadata:
   name: presidio
-  namespace: default
+  namespace: guardrail-providers
 spec:
   type: presidio-api
   presidio:
-    baseUrl: "http://presidio:80"
+    baseUrl: "http://presidio.guardrail-providers:80"
 ---
 # Guard defines when the guardrail is applied and references the provider.
 apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: Guard
 metadata:
   name: pii-guard
-  namespace: default
+  namespace: guards
 spec:
   mode:
     - pre_call
   description: Detect and mask PII in user inputs before they are sent to the LLM.
   providerRef:
     name: presidio
-    namespace: default
+    namespace: guardrail-providers
   presidio:
     language: en
     scoreThresholds:
@@ -60,4 +73,4 @@ spec:
       value: test-key
   guardrails:
     - name: pii-guard
-      namespace: default
+      namespace: guards

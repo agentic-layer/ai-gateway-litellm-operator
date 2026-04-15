@@ -208,8 +208,8 @@ var _ = Describe("AiGateway", Ordered, func() {
 					_, _ = fmt.Fprintf(GinkgoWriter, "ai-gateway-pii pod describe:\n%s\n", describeOutput)
 				}
 
-				fetchPodLogs("app=presidio-analyzer", "default", 50)
-				fetchPodLogs("app=presidio-anonymizer", "default", 50)
+				fetchPodLogs("app=presidio-analyzer", "guardrail-providers", 50)
+				fetchPodLogs("app=presidio-anonymizer", "guardrail-providers", 50)
 				fetchPodLogs("app=ai-gateway-pii", "default", 100)
 			}
 		})

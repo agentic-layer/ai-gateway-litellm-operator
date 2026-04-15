@@ -34,6 +34,11 @@ const operatorName = "ai-gateway-litellm-operator"
 // namespace where the project is deployed in
 const namespace = "ai-gateway-litellm-system"
 
+// Namespaces for cross-namespace guardrail testing
+const (
+	guardrailProviderNamespace = "guardrail-providers"
+)
+
 var (
 	// Optional Environment Variables:
 	// - CERT_MANAGER_INSTALL_SKIP=true: Skips CertManager installation during test setup.
@@ -110,16 +115,16 @@ var _ = BeforeSuite(func() {
 		To(Succeed(), "WireMock deployment did not become ready")
 
 	By("waiting for Presidio proxy to be ready")
-	Expect(utils.VerifyDeploymentReady("presidio-proxy", "default", 5*time.Minute)).
+	Expect(utils.VerifyDeploymentReady("presidio-proxy", guardrailProviderNamespace, 5*time.Minute)).
 		To(Succeed(), "presidio-proxy deployment did not become ready")
 
 	By("waiting for Presidio anonymizer to be ready")
-	Expect(utils.VerifyDeploymentReady("presidio-anonymizer", "default", 5*time.Minute)).
+	Expect(utils.VerifyDeploymentReady("presidio-anonymizer", guardrailProviderNamespace, 5*time.Minute)).
 		To(Succeed(), "presidio-anonymizer deployment did not become ready")
 
 	// The analyzer loads spaCy NLP models on startup and can take several minutes.
 	By("waiting for Presidio analyzer to be ready")
-	Expect(utils.VerifyDeploymentReady("presidio-analyzer", "default", 10*time.Minute)).
+	Expect(utils.VerifyDeploymentReady("presidio-analyzer", guardrailProviderNamespace, 10*time.Minute)).
 		To(Succeed(), "presidio-analyzer deployment did not become ready")
 
 	By("deploying the controller-manager")

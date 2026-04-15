@@ -1,19 +1,24 @@
 # Presidio PII detection services for local and e2e testing.
 # Deploys Presidio Analyzer and Anonymizer, plus an nginx reverse proxy that
-# exposes both services under a single URL (presidio:80).
+# exposes both services under a single URL (presidio.guardrail-providers:80).
 # This is required because the GuardrailProvider CRD uses a single baseUrl
 # which is mapped to both presidio_analyzer_api_base and presidio_anonymizer_api_base.
 #
 # Routes:
-#   POST presidio:80/analyze   -> presidio-analyzer:3000
-#   POST presidio:80/anonymize -> presidio-anonymizer:3000
+#   POST presidio.guardrail-providers:80/analyze   -> presidio-analyzer:3000
+#   POST presidio.guardrail-providers:80/anonymize  -> presidio-anonymizer:3000
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: guardrail-providers
 ---
 # Nginx reverse-proxy config
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: presidio-proxy-config
-  namespace: default
+  namespace: guardrail-providers
 data:
   default.conf: |
     server {
@@ -39,7 +44,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: presidio-analyzer
-  namespace: default
+  namespace: guardrail-providers
   labels:
     app: presidio-analyzer
 spec:
@@ -84,7 +89,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: presidio-analyzer
-  namespace: default
+  namespace: guardrail-providers
 spec:
   selector:
     app: presidio-analyzer
@@ -97,7 +102,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: presidio-anonymizer
-  namespace: default
+  namespace: guardrail-providers
   labels:
     app: presidio-anonymizer
 spec:
@@ -142,7 +147,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: presidio-anonymizer
-  namespace: default
+  namespace: guardrail-providers
 spec:
   selector:
     app: presidio-anonymizer
@@ -155,7 +160,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: presidio-proxy
-  namespace: default
+  namespace: guardrail-providers
   labels:
     app: presidio-proxy
 spec:
@@ -207,7 +212,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: presidio
-  namespace: default
+  namespace: guardrail-providers
 spec:
   selector:
     app: presidio-proxy
