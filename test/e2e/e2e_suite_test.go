@@ -114,18 +114,9 @@ var _ = BeforeSuite(func() {
 	Expect(utils.VerifyDeploymentReady("wiremock", "default", 2*time.Minute)).
 		To(Succeed(), "WireMock deployment did not become ready")
 
-	By("waiting for Presidio proxy to be ready")
-	Expect(utils.VerifyDeploymentReady("presidio-proxy", guardrailProviderNamespace, 5*time.Minute)).
-		To(Succeed(), "presidio-proxy deployment did not become ready")
-
-	By("waiting for Presidio anonymizer to be ready")
-	Expect(utils.VerifyDeploymentReady("presidio-anonymizer", guardrailProviderNamespace, 5*time.Minute)).
-		To(Succeed(), "presidio-anonymizer deployment did not become ready")
-
-	// The analyzer loads spaCy NLP models on startup and can take several minutes.
-	By("waiting for Presidio analyzer to be ready")
-	Expect(utils.VerifyDeploymentReady("presidio-analyzer", guardrailProviderNamespace, 10*time.Minute)).
-		To(Succeed(), "presidio-analyzer deployment did not become ready")
+	By("waiting for Presidio to be ready")
+	Expect(utils.VerifyDeploymentReady("presidio", guardrailProviderNamespace, 5*time.Minute)).
+		To(Succeed(), "presidio deployment did not become ready")
 
 	By("deploying the controller-manager")
 	_, err = utils.Run(exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage)))

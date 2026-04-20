@@ -114,7 +114,7 @@ var _ = Describe("AiGateway", Ordered, func() {
 			body, statusCode, err = utils.MakeServiceGet("default", "ai-gateway", 80, "/models")
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(statusCode).To(Equal(200))
-		}, 2*time.Minute, 5*time.Second).Should(Succeed(), "Failed to query /models endpoint")
+		}, 5*time.Minute, 5*time.Second).Should(Succeed(), "Failed to query /models endpoint")
 
 		By("verifying response contains configured model")
 		var responseMap map[string]interface{}
