@@ -8,6 +8,8 @@ github.com/agentic-layer/agent-runtime-operator v0.27.0 h1:fPvXlr5uv6kLXF1EtdEp5
 github.com/agentic-layer/agent-runtime-operator v0.27.0/go.mod h1:8W+zkFxLIwWzJIzCKdCEc9qz3hzeCJJfZqxaN5zHexE=
 github.com/agentic-layer/agent-runtime-operator v0.27.1 h1:4KD31lKKN605koVjph2LKlf3i+n5gzdQ/JFr59kd+jo=
 github.com/agentic-layer/agent-runtime-operator v0.27.1/go.mod h1:8W+zkFxLIwWzJIzCKdCEc9qz3hzeCJJfZqxaN5zHexE=
+github.com/agentic-layer/agent-runtime-operator v0.28.0 h1:Y981xWvYMRpyKQ/UJZ0JsRkTGNQ+zvQwI0i7GUuQTXk=
+github.com/agentic-layer/agent-runtime-operator v0.28.0/go.mod h1:pe4kb7p3oZd6Mfyoy2HW8wLirGQzKcH3JpU5YmoVbcw=
 github.com/antlr4-go/antlr/v4 v4.13.1 h1:SqQKkuVZ+zWkMMNkjy5FZe5mr5WURWnlpmOuzYWrPrQ=
 github.com/antlr4-go/antlr/v4 v4.13.1/go.mod h1:GKmUxMtwp6ZgGwZSva4eWPC5mS6vUAmOABFgjdkM7Nw=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 h1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=
