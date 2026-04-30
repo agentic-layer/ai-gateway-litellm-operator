@@ -4,6 +4,7 @@ kind: Kustomization
 # Use default configuration as base
 resources:
 - ../default
+- ../install
 
 # Patch for local development
 patches:

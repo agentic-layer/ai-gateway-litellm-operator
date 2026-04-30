@@ -52,7 +52,7 @@ spec:
     kind: OCIRepository
     name: ai-gateway-litellm-operator
   interval: 10m
-  path: ./default
+  path: ./
   prune: true
   wait: true
   dependsOn:

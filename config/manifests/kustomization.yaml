@@ -3,6 +3,7 @@
 resources:
 - bases/ai-gateway-litellm.clusterserviceversion.yaml
 - ../default
+- ../install
 - ../samples
 - ../scorecard
 
