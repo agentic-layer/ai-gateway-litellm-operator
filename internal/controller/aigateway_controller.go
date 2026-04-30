@@ -291,6 +291,8 @@ func (r *AiGatewayReconciler) shouldProcessAiGateway(ctx context.Context, aiGate
 				return true
 			}
 		}
+		// Explicit className did not match any managed class; do not fall back to the default class.
+		return false
 	}
 
 	// Look for AiGatewayClass with default annotation among filtered classes
