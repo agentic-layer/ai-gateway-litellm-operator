@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Combines the operator deployment (with namePrefix) and the cluster-scoped
+# AiGatewayClass registration (without namePrefix, so the class keeps a stable,
+# conventional name like "litellm" that users reference in AiGateway resources).
+resources:
+- ./default
+- ./install
