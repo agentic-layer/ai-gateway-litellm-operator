@@ -50,7 +50,7 @@ var _ = Describe("AiGateway Controller", func() {
 
 		BeforeEach(func() {
 			gatewayNamespacedName = types.NamespacedName{Name: aiGatewayName, Namespace: testNamespace}
-			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName, Namespace: testNamespace}
+			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName}
 
 			createDefaultClass(classNamespacedName)
 
@@ -108,7 +108,7 @@ var _ = Describe("AiGateway Controller", func() {
 				Name:      "test-gateway-with-env",
 				Namespace: testNamespace,
 			}
-			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName, Namespace: testNamespace}
+			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName}
 
 			createDefaultClass(classNamespacedName)
 
@@ -190,7 +190,7 @@ var _ = Describe("AiGateway Controller", func() {
 
 		BeforeEach(func() {
 			gatewayNamespacedName = types.NamespacedName{Name: "test-gateway-with-envfrom", Namespace: testNamespace}
-			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName, Namespace: testNamespace}
+			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName}
 			configMapName = types.NamespacedName{Name: "test-config", Namespace: testNamespace}
 
 			createDefaultClass(classNamespacedName)
@@ -278,7 +278,7 @@ var _ = Describe("AiGateway Controller", func() {
 
 		BeforeEach(func() {
 			gatewayNamespacedName = types.NamespacedName{Name: "test-gateway-with-common-metadata", Namespace: testNamespace}
-			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName, Namespace: testNamespace}
+			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName}
 
 			createDefaultClass(classNamespacedName)
 
@@ -365,7 +365,7 @@ var _ = Describe("AiGateway Controller", func() {
 
 		BeforeEach(func() {
 			gatewayNamespacedName = types.NamespacedName{Name: "test-gateway-with-pod-metadata", Namespace: testNamespace}
-			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName, Namespace: testNamespace}
+			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName}
 
 			createDefaultClass(classNamespacedName)
 
@@ -458,7 +458,7 @@ var _ = Describe("AiGateway Controller", func() {
 
 		BeforeEach(func() {
 			gatewayNamespacedName = types.NamespacedName{Name: "test-gateway-guardrails", Namespace: testNamespace}
-			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName, Namespace: testNamespace}
+			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName}
 			guardNamespacedName = types.NamespacedName{Name: "pii-guard", Namespace: testNamespace}
 			providerNamespacedName = types.NamespacedName{Name: "presidio-provider", Namespace: testNamespace}
 
@@ -573,7 +573,7 @@ var _ = Describe("AiGateway Controller", func() {
 
 		BeforeEach(func() {
 			gatewayNamespacedName = types.NamespacedName{Name: "test-gateway-guardrails-multi-mode", Namespace: testNamespace}
-			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName, Namespace: testNamespace}
+			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName}
 			guardNamespacedName = types.NamespacedName{Name: "pii-guard-multi-mode", Namespace: testNamespace}
 			providerNamespacedName = types.NamespacedName{Name: "presidio-provider-multi-mode", Namespace: testNamespace}
 
@@ -689,7 +689,7 @@ var _ = Describe("AiGateway Controller", func() {
 
 		BeforeEach(func() {
 			gatewayNamespacedName = types.NamespacedName{Name: "test-gateway-guardrails-config", Namespace: testNamespace}
-			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName, Namespace: testNamespace}
+			classNamespacedName = types.NamespacedName{Name: aiGatewayClassName}
 			guardNamespacedName = types.NamespacedName{Name: "pii-guard-config", Namespace: testNamespace}
 			providerNamespacedName = types.NamespacedName{Name: "presidio-provider-config", Namespace: testNamespace}
 
@@ -811,9 +811,8 @@ var _ = Describe("AiGateway Controller", func() {
 func cleanupAiGatewayClass(namespacedName types.NamespacedName) {
 	By("Cleaning up the AiGatewayClass")
 	classResource := &gatewayv1alpha1.AiGatewayClass{}
-	classNamespacedName := types.NamespacedName{Name: aiGatewayClassName, Namespace: namespacedName.Namespace}
 
-	if err := k8sClient.Get(ctx, classNamespacedName, classResource); err == nil {
+	if err := k8sClient.Get(ctx, namespacedName, classResource); err == nil {
 		Expect(k8sClient.Delete(ctx, classResource)).To(Succeed())
 	}
 }
@@ -840,8 +839,7 @@ func createDefaultClass(namespacedName types.NamespacedName) {
 	By("Creating a default AiGatewayClass")
 	var aiGatewayClass = &gatewayv1alpha1.AiGatewayClass{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      namespacedName.Name,
-			Namespace: namespacedName.Namespace,
+			Name: namespacedName.Name,
 			Annotations: map[string]string{
 				"aigatewayclass.kubernetes.io/is-default-class": "true",
 			},

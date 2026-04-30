@@ -2,11 +2,6 @@ apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: AiGatewayClass
 metadata:
   name: litellm
-  labels:
-    app.kubernetes.io/name: ai-gateway-litellm-operator
-    app.kubernetes.io/instance: ai-gateway-litellm-operator
-    app.kubernetes.io/part-of: ai-gateway-litellm-operator
-    app.kubernetes.io/managed-by: kustomize
   annotations:
     aigatewayclass.kubernetes.io/is-default-class: "true"
 spec:
