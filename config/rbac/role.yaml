@@ -51,6 +51,9 @@ rules:
   - aigatewayclasses
   - guardrailproviders
   - guards
+  - toolgatewayclasses
+  - toolroutes
+  - toolservers
   verbs:
   - get
   - list
@@ -59,6 +62,7 @@ rules:
   - runtime.agentic-layer.ai
   resources:
   - aigateways
+  - toolgateways
   verbs:
   - create
   - delete
@@ -71,12 +75,15 @@ rules:
   - runtime.agentic-layer.ai
   resources:
   - aigateways/finalizers
+  - toolgateways/finalizers
   verbs:
   - update
 - apiGroups:
   - runtime.agentic-layer.ai
   resources:
   - aigateways/status
+  - toolgateways/status
+  - toolroutes/status
   verbs:
   - get
   - patch

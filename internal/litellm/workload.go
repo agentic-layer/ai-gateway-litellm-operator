@@ -47,6 +47,9 @@ const (
 )
 
 // GatewayWorkload is the input both reconcilers fill before calling ReconcileWorkload.
+// Env carries the caller's already-resolved env vars (user spec.env plus any
+// CRD-specific generated entries such as API-key references); ReconcileWorkload
+// passes it through MergeEnv before mounting on the container.
 type GatewayWorkload struct {
 	Name, Namespace string
 	Owner           client.Object
@@ -68,6 +71,27 @@ type PhaseError struct {
 
 func (e *PhaseError) Error() string { return fmt.Sprintf("%s reconcile failed: %v", e.Phase, e.Err) }
 func (e *PhaseError) Unwrap() error { return e.Err }
+
+// IsDeploymentRolledOut reports whether the deployment-controller has applied
+// the latest spec and all desired replicas are available. The second return is
+// a human-readable reason callers can use as a status-condition message when
+// the rollout is still in progress. Callers should use this to gate a Ready=True
+// condition so consumers do not see Ready before pods are actually serving.
+func IsDeploymentRolledOut(d *appsv1.Deployment) (bool, string) {
+	if d.Generation > d.Status.ObservedGeneration {
+		return false, fmt.Sprintf("Deployment generation %d not yet observed (last observed: %d)",
+			d.Generation, d.Status.ObservedGeneration)
+	}
+	desired := int32(1)
+	if d.Spec.Replicas != nil {
+		desired = *d.Spec.Replicas
+	}
+	if d.Status.AvailableReplicas < desired {
+		return false, fmt.Sprintf("Deployment rollout in progress: %d/%d replicas available",
+			d.Status.AvailableReplicas, desired)
+	}
+	return true, ""
+}
 
 // ReconcileWorkload creates or updates the ConfigMap, Deployment, and Service that
 // run a LiteLLM proxy for a single gateway CR (the Owner). All three are reconciled
@@ -211,7 +235,7 @@ func reconcileDeployment(ctx context.Context, c client.Client, scheme *runtime.S
 			"litellm", "--config", "/app/config/config.yaml",
 			"--port", strconv.Itoa(int(w.ContainerPort)),
 		}
-		container.Env = w.Env
+		container.Env = MergeEnv(w.Env)
 		container.EnvFrom = w.EnvFrom
 		container.Resources = corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{

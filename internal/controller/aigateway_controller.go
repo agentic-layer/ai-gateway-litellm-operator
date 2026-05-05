@@ -27,6 +27,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -53,6 +54,9 @@ const (
 
 	// ReasonAiGatewayReady indicates AiGateway is ready
 	ReasonAiGatewayReady = "AiGatewayReady"
+
+	// ReasonAiGatewayRollingOut indicates the Deployment has not yet finished its rollout.
+	ReasonAiGatewayRollingOut = "DeploymentRollingOut"
 )
 
 const ControllerName = "aigateway.agentic-layer.ai/ai-gateway-litellm-controller"
@@ -89,11 +93,14 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		log.Error(err, "Failed to get AiGateway")
 		return ctrl.Result{}, err
 	}
+	original := aiGateway.DeepCopy()
 
 	owned, err := litellm.IsAiGatewayOwnedByController(ctx, r, &aiGateway, ControllerName)
 	if err != nil {
-		log.Info("Failed to determine controller ownership, skipping to avoid errors", "err", err)
-		return ctrl.Result{}, nil
+		// Surface so controller-runtime requeues with backoff. Swallowing the
+		// error left spec edits unobserved during transient API outages.
+		log.Error(err, "Failed to determine controller ownership")
+		return ctrl.Result{}, err
 	}
 	if !owned {
 		return ctrl.Result{}, nil
@@ -114,7 +121,7 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			"ConfigGenerationFailed", fmt.Sprintf("Failed to generate config: %v", err))
 		r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionFalse,
 			"ConfigGenerationFailed", "AiGateway not ready due to config generation failure")
-		if err := r.updateStatus(ctx, &aiGateway); err != nil {
+		if err := r.patchStatus(ctx, original, &aiGateway); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -136,19 +143,16 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if err := litellm.ReconcileWorkload(ctx, r.Client, r.Scheme, workload); err != nil {
 		var pe *litellm.PhaseError
+		// Add a case here whenever a new PhaseError.Phase is introduced in
+		// internal/litellm. Unrecognized phases fall through to "WorkloadFailed"
+		// — degraded but never silent.
 		reason := "WorkloadFailed"
-		condType := AiGatewayReady
 		if stderrors.As(err, &pe) {
-			// Add a case here whenever a new PhaseError.Phase is introduced in
-			// internal/litellm. Unrecognized phases fall through to "WorkloadFailed"
-			// on AiGatewayReady — degraded but never silent.
 			switch pe.Phase {
 			case "ConfigMap":
 				reason = "ConfigMapFailed"
-				condType = AiGatewayConfigured
 			case "Secret":
 				reason = "SecretFailed"
-				condType = AiGatewayConfigured
 			case "Deployment":
 				reason = "DeploymentFailed"
 			case "Service":
@@ -156,22 +160,41 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 		}
 		log.Error(err, "Failed to reconcile workload")
-		r.updateCondition(&aiGateway, condType, metav1.ConditionFalse, reason, err.Error())
-		if e := r.updateStatus(ctx, &aiGateway); e != nil {
+		r.updateCondition(&aiGateway, AiGatewayConfigured, metav1.ConditionFalse, reason, err.Error())
+		r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionFalse, reason, err.Error())
+		if e := r.patchStatus(ctx, original, &aiGateway); e != nil {
 			return ctrl.Result{}, e
 		}
-		return ctrl.Result{}, nil
+		// All ReconcileWorkload phases (ConfigMap / Secret / Deployment / Service)
+		// are apiserver calls — surface the error so controller-runtime requeues
+		// with exponential backoff. Permanent config-generation errors are handled
+		// in the generateAiGatewayConfig branch above.
+		return ctrl.Result{}, err
 	}
 
 	r.updateCondition(&aiGateway, AiGatewayConfigured, metav1.ConditionTrue,
 		ReasonConfigurationApplied, "AiGateway configuration successfully applied")
-	r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionTrue,
-		ReasonAiGatewayReady, "AiGateway is ready and serving traffic")
+
+	// Ready reflects pod-level availability, not just "we created the API objects".
+	// The Owns(&appsv1.Deployment{}) watch re-fires Reconcile when the deployment-
+	// controller publishes status changes, so we don't need a manual requeue.
+	deployment := &appsv1.Deployment{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: aiGateway.Namespace, Name: aiGateway.Name}, deployment); err != nil {
+		log.Error(err, "Failed to get Deployment for rollout check")
+		return ctrl.Result{}, err
+	}
+	if rolledOut, msg := litellm.IsDeploymentRolledOut(deployment); rolledOut {
+		r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionTrue,
+			ReasonAiGatewayReady, "AiGateway is ready and serving traffic")
+	} else {
+		r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionFalse,
+			ReasonAiGatewayRollingOut, msg)
+	}
 
 	log.Info("Successfully reconciled AiGateway", "name", aiGateway.Name,
 		"aiModels", len(aiGateway.Spec.AiModels))
 
-	if err := r.updateStatus(ctx, &aiGateway); err != nil {
+	if err := r.patchStatus(ctx, original, &aiGateway); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
@@ -244,7 +267,7 @@ func (r *AiGatewayReconciler) buildEnvironmentVariables(aiGateway *gatewayv1alph
 	for _, e := range envMap {
 		envs = append(envs, e)
 	}
-	return litellm.MergeEnv(envs)
+	return envs
 }
 
 func (r *AiGatewayReconciler) generateApiKeyEnvVars(aiGateway *gatewayv1alpha1.AiGateway, envMap map[string]corev1.EnvVar) {
@@ -277,35 +300,25 @@ func (r *AiGatewayReconciler) generateApiKeyEnvVars(aiGateway *gatewayv1alpha1.A
 	}
 }
 
-// updateCondition updates or adds a condition to the AiGateway status
+// updateCondition stamps a condition on the AiGateway via apimeta.SetStatusCondition,
+// which preserves LastTransitionTime when status/reason/message are unchanged.
 func (r *AiGatewayReconciler) updateCondition(aiGateway *gatewayv1alpha1.AiGateway, conditionType string, status metav1.ConditionStatus, reason, message string) {
-	condition := metav1.Condition{
-		Type:    conditionType,
-		Status:  status,
-		Reason:  reason,
-		Message: message,
-	}
-
-	// Find existing condition
-	for i, existingCondition := range aiGateway.Status.Conditions {
-		if existingCondition.Type == conditionType {
-			// Update existing condition
-			aiGateway.Status.Conditions[i] = condition
-			aiGateway.Status.Conditions[i].LastTransitionTime = metav1.Now()
-			return
-		}
-	}
-
-	// Add new condition
-	condition.LastTransitionTime = metav1.Now()
-	aiGateway.Status.Conditions = append(aiGateway.Status.Conditions, condition)
+	apimeta.SetStatusCondition(&aiGateway.Status.Conditions, metav1.Condition{
+		Type:               conditionType,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: aiGateway.Generation,
+	})
 }
 
-// updateStatus updates the AiGateway status
-func (r *AiGatewayReconciler) updateStatus(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway) error {
-	if statusErr := r.Status().Update(ctx, aiGateway); statusErr != nil {
-		logf.FromContext(ctx).Error(statusErr, "Failed to update AiGateway status")
-		return statusErr
+// patchStatus issues an optimistic-merge patch against the snapshot captured
+// at the start of Reconcile. Using Patch rather than Update keeps concurrent
+// status writes from other workers / sub-resources from clobbering each other.
+func (r *AiGatewayReconciler) patchStatus(ctx context.Context, original, aiGateway *gatewayv1alpha1.AiGateway) error {
+	if err := r.Status().Patch(ctx, aiGateway, client.MergeFrom(original)); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to patch AiGateway status")
+		return err
 	}
 	return nil
 }
@@ -333,11 +346,30 @@ func (r *AiGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return requests
 	})
 
+	// enqueueAllAiGateways fans out to every AiGateway in the cluster. Used
+	// for AiGatewayClass changes (cluster-scoped) — the default-class
+	// annotation toggling has to re-evaluate gateways that don't name a class
+	// explicitly.
+	enqueueAllAiGateways := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, _ client.Object) []reconcile.Request {
+		log := logf.FromContext(ctx)
+		var aiGatewayList gatewayv1alpha1.AiGatewayList
+		if err := r.List(ctx, &aiGatewayList); err != nil {
+			log.Error(err, "Failed to list AiGateways for AiGatewayClass watch")
+			return nil
+		}
+		requests := make([]reconcile.Request, len(aiGatewayList.Items))
+		for i, gw := range aiGatewayList.Items {
+			requests[i] = reconcile.Request{NamespacedName: types.NamespacedName{Name: gw.Name, Namespace: gw.Namespace}}
+		}
+		return requests
+	})
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gatewayv1alpha1.AiGateway{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
+		Watches(&gatewayv1alpha1.AiGatewayClass{}, enqueueAllAiGateways).
 		Watches(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {

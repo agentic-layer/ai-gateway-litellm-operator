@@ -94,6 +94,11 @@ var _ = Describe("AiGateway Controller", func() {
 			checkConfigMapReconciled(ctx, gatewayNamespacedName)
 			checkDeploymentReconciled(ctx, gatewayNamespacedName)
 			checkServiceReconciled(ctx, gatewayNamespacedName)
+
+			By("simulating deployment rollout and reconciling again so Ready flips True")
+			markDeploymentRolledOut(gatewayNamespacedName.Name, gatewayNamespacedName.Namespace)
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: gatewayNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
 			checkStatusConditions(ctx, gatewayNamespacedName, true)
 		})
 	})

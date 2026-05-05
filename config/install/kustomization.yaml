@@ -1,2 +1,3 @@
 resources:
 - aigatewayclass.yaml
+- toolgatewayclass.yaml

@@ -1,0 +1,8 @@
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: ToolGatewayClass
+metadata:
+  name: litellm
+  annotations:
+    toolgatewayclass.kubernetes.io/is-default-class: "true"
+spec:
+  controller: litellm.agentic-layer.ai/tool-gateway-litellm-controller

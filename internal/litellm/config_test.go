@@ -100,3 +100,56 @@ func TestRenderConfig_GuardrailsBlock(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderConfig_McpServersBlock(t *testing.T) {
+	cfg := LiteLLMConfig{
+		McpServers: map[string]McpServer{
+			"default_search": {
+				Url:          "http://gw.tool-gateway.svc.cluster.local/mcp/default_search",
+				Transport:    "http",
+				AllowedTools: []string{"search", "fetch_*"},
+			},
+			"default_files": {
+				Url:             "http://files.default.svc.cluster.local:8080/sse",
+				Transport:       "sse",
+				DisallowedTools: []string{"delete_*"},
+			},
+		},
+	}
+	got, err := RenderConfig(cfg)
+	if err != nil {
+		t.Fatalf("RenderConfig: %v", err)
+	}
+	for _, want := range []string{
+		"mcp_servers:",
+		"default_search:",
+		"url: http://gw.tool-gateway.svc.cluster.local/mcp/default_search",
+		"transport: http",
+		"- search",
+		"- fetch_*",
+		"default_files:",
+		"transport: sse",
+		"- delete_*",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("RenderConfig output missing %q\nfull output:\n%s", want, got)
+		}
+	}
+}
+
+func TestRenderConfig_OmitsModelListWhenEmpty(t *testing.T) {
+	// Tool-only gateways carry no model_list. The block must be absent so
+	// LiteLLM does not start with `model_list: null`.
+	cfg := LiteLLMConfig{
+		McpServers: map[string]McpServer{
+			"x": {Url: "http://x"},
+		},
+	}
+	got, err := RenderConfig(cfg)
+	if err != nil {
+		t.Fatalf("RenderConfig: %v", err)
+	}
+	if strings.Contains(got, "model_list") {
+		t.Errorf("expected model_list to be omitted, got:\n%s", got)
+	}
+}

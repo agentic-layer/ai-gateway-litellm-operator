@@ -40,6 +40,17 @@ func warnError(err error) {
 	_, _ = fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
 }
 
+// RunStdin runs cmd with the given string piped to its standard input. Used in
+// e2e tests to apply small inline manifests without writing temp files.
+func RunStdin(cmd *exec.Cmd, stdin string) error {
+	cmd.Stdin = strings.NewReader(stdin)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s failed: %v\n%s", cmd.Args, err, string(out))
+	}
+	return nil
+}
+
 // Run executes the provided command within this context
 func Run(cmd *exec.Cmd) (string, error) {
 	dir, _ := GetProjectDir()

@@ -24,9 +24,10 @@ import (
 
 // LiteLLMConfig is the top-level config rendered to config.yaml inside the proxy pod.
 type LiteLLMConfig struct {
-	ModelList       []ModelConfig     `yaml:"model_list"`
-	LiteLLMSettings LiteLLMSettings   `yaml:"litellm_settings,omitempty"`
-	Guardrails      []GuardrailConfig `yaml:"guardrails,omitempty"`
+	ModelList       []ModelConfig        `yaml:"model_list,omitempty"`
+	McpServers      map[string]McpServer `yaml:"mcp_servers,omitempty"`
+	LiteLLMSettings LiteLLMSettings      `yaml:"litellm_settings,omitempty"`
+	Guardrails      []GuardrailConfig    `yaml:"guardrails,omitempty"`
 }
 
 // ModelConfig is one entry under model_list.
@@ -39,6 +40,19 @@ type ModelConfig struct {
 type LiteLLMParams struct {
 	Model  string `yaml:"model"`
 	ApiKey string `yaml:"api_key,omitempty"`
+}
+
+// McpServer is one entry under mcp_servers, keyed by the controller-side
+// mcpServerKey helper. LiteLLM exposes each entry at /mcp/<key> on the proxy.
+//
+// AllowedTools / DisallowedTools are passed through verbatim from
+// ToolRoute.spec.toolFilter.{allow,deny}; LiteLLM owns the glob semantics.
+type McpServer struct {
+	Url             string   `yaml:"url"`
+	Transport       string   `yaml:"transport,omitempty"`
+	AllowedTools    []string `yaml:"allowed_tools,omitempty"`
+	DisallowedTools []string `yaml:"disallowed_tools,omitempty"`
+	AllowAllKeys    bool     `yaml:"allow_all_keys,omitempty"`
 }
 
 // LiteLLMSettings is the litellm_settings block.

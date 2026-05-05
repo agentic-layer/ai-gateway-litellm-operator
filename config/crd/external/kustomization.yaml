@@ -5,3 +5,7 @@ resources:
   - runtime.agentic-layer.ai_aigatewayclasses.yaml
   - runtime.agentic-layer.ai_guards.yaml
   - runtime.agentic-layer.ai_guardrailproviders.yaml
+  - runtime.agentic-layer.ai_toolgateways.yaml
+  - runtime.agentic-layer.ai_toolgatewayclasses.yaml
+  - runtime.agentic-layer.ai_toolroutes.yaml
+  - runtime.agentic-layer.ai_toolservers.yaml
