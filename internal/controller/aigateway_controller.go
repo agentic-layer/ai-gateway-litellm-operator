@@ -601,7 +601,7 @@ func (r *AiGatewayReconciler) reconcileDeployment(ctx context.Context, aiGateway
 				corev1.ResourceCPU:    resource.MustParse("100m"),
 			},
 			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("1G"),
+				corev1.ResourceMemory: resource.MustParse("2G"),
 				corev1.ResourceCPU:    resource.MustParse("500m"),
 			},
 		}
