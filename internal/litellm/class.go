@@ -62,3 +62,45 @@ func IsAiGatewayOwnedByController(ctx context.Context, c client.Reader, gw *gate
 	}
 	return false, nil
 }
+
+// ToolGatewayClassDefaultAnnotation marks a ToolGatewayClass as the default class.
+const ToolGatewayClassDefaultAnnotation = "toolgatewayclass.kubernetes.io/is-default-class"
+
+// IsToolGatewayOwnedByController reports whether the given ToolGateway is owned by
+// the controller named controllerName. An explicit spec.toolGatewayClassName must
+// match a ToolGatewayClass with that controller; when empty, the gateway is claimed
+// iff a ToolGatewayClass owned by this controller carries the default-class
+// annotation.
+//
+// Returns (false, nil) if the gateway is not ours; returns an error only when
+// listing ToolGatewayClasses fails so callers can requeue rather than silently
+// drop the object.
+func IsToolGatewayOwnedByController(ctx context.Context, c client.Reader, gw *gatewayv1alpha1.ToolGateway, controllerName string) (bool, error) {
+	var classList gatewayv1alpha1.ToolGatewayClassList
+	if err := c.List(ctx, &classList); err != nil {
+		return false, err
+	}
+
+	owned := make([]gatewayv1alpha1.ToolGatewayClass, 0, len(classList.Items))
+	for _, cls := range classList.Items {
+		if cls.Spec.Controller == controllerName {
+			owned = append(owned, cls)
+		}
+	}
+
+	if className := gw.Spec.ToolGatewayClassName; className != "" {
+		for _, cls := range owned {
+			if cls.Name == className {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
+	for _, cls := range owned {
+		if cls.Annotations[ToolGatewayClassDefaultAnnotation] == "true" {
+			return true, nil
+		}
+	}
+	return false, nil
+}

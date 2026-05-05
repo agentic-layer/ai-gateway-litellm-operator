@@ -23,8 +23,10 @@ import (
 )
 
 // MergeEnv produces the sorted, prometheus-augmented env list for the LiteLLM container.
-// `caller` is the caller's already-merged env (user spec.env plus any CRD-specific
-// generated entries such as API-key references). MergeEnv:
+// Called by ReconcileWorkload, so any env emitted by either gateway reconciler
+// is guaranteed to carry PROMETHEUS_MULTIPROC_DIR (the workload mounts an
+// emptyDir at that path for the LiteLLM prometheus_client multi-process exporter).
+// MergeEnv:
 //   - dedupes by name (last-wins),
 //   - appends PROMETHEUS_MULTIPROC_DIR if absent,
 //   - returns a slice sorted by name for deterministic ordering.

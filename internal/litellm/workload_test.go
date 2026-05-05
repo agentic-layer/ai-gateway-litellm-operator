@@ -139,6 +139,43 @@ func TestReconcileWorkload_ToolGatewayShape_DecoupledPorts(t *testing.T) {
 	}
 }
 
+// TestReconcileWorkload_InjectsPrometheusMultiprocDir guarantees that any caller
+// of ReconcileWorkload — even one that passes nil/no Env — gets the
+// PROMETHEUS_MULTIPROC_DIR env var the prometheus_client multi-process exporter
+// requires. The container always mounts /prometheus_multiproc, so a missing env
+// var would crash the pod or silently lose metrics.
+func TestReconcileWorkload_InjectsPrometheusMultiprocDir(t *testing.T) {
+	s := workloadScheme(t)
+	owner := newOwner("tg", "tool-gateway")
+	c := fake.NewClientBuilder().WithScheme(s).WithObjects(owner).Build()
+
+	w := GatewayWorkload{
+		Name: "tg", Namespace: "tool-gateway", Owner: owner,
+		ContainerPort: 4000, ServicePort: 80,
+		// Env intentionally nil to model a ToolGateway whose user spec has no env.
+		ConfigYAML: "mcp_servers: {}\n",
+	}
+	if err := ReconcileWorkload(context.Background(), c, s, w); err != nil {
+		t.Fatalf("ReconcileWorkload: %v", err)
+	}
+	var dep appsv1.Deployment
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "tg", Namespace: "tool-gateway"}, &dep); err != nil {
+		t.Fatalf("Deployment not found: %v", err)
+	}
+	var found bool
+	for _, e := range dep.Spec.Template.Spec.Containers[0].Env {
+		if e.Name == "PROMETHEUS_MULTIPROC_DIR" {
+			if e.Value != PrometheusMultiprocDir {
+				t.Errorf("PROMETHEUS_MULTIPROC_DIR = %q; want %q", e.Value, PrometheusMultiprocDir)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("PROMETHEUS_MULTIPROC_DIR not injected into container env: %v", dep.Spec.Template.Spec.Containers[0].Env)
+	}
+}
+
 func TestReconcileWorkload_PhaseErrorTagsConfigMapFailure(t *testing.T) {
 	// Use a scheme without corev1 to force the ConfigMap apply to fail with
 	// a "no kind is registered" error.
