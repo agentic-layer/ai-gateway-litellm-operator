@@ -111,7 +111,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred(), "Failed to deploy Presidio services")
 
 	By("waiting for WireMock to be ready")
-	Expect(utils.VerifyDeploymentReady("wiremock", "default", 2*time.Minute)).
+	Expect(utils.VerifyDeploymentReady("wiremock", "default", 3*time.Minute)).
 		To(Succeed(), "WireMock deployment did not become ready")
 
 	By("waiting for Presidio to be ready")
