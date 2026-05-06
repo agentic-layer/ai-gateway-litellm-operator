@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tool-gateway
+---
+# ToolRoute lives in its own namespace to demonstrate cross-namespace
+# attachment to a ToolGateway.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tool-gateway-routes
+---
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: ToolGateway
+metadata:
+  name: tool-gateway
+  namespace: tool-gateway
+spec:
+  toolGatewayClassName: litellm
+---
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: ToolRoute
+metadata:
+  name: echo
+  namespace: tool-gateway-routes
+spec:
+  toolGatewayRef:
+    name: tool-gateway
+    namespace: tool-gateway
+  upstream:
+    external:
+      url: http://echo.default/mcp

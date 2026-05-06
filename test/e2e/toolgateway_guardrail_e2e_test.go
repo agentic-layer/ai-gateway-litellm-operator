@@ -1,5 +1,5 @@
 /*
-Copyright 2026.
+Copyright 2026 Agentic Layer.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package e2e
 
 import (
 	"os/exec"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -26,19 +27,19 @@ import (
 	"github.com/agentic-layer/ai-gateway-litellm/test/utils"
 )
 
-var _ = Describe("ToolGateway", Ordered, func() {
-	const sample = "config/samples/toolgateway.yaml"
+var _ = Describe("ToolGateway with guardrails", Ordered, func() {
+	const sample = "config/samples/toolgateway_guarded.yaml"
 
 	gatewayTarget := utils.ServiceTarget{
-		Namespace:   "tool-gateway",
-		ServiceName: "tool-gateway",
+		Namespace:   "tool-gateway-guarded",
+		ServiceName: "tool-gateway-guarded",
 		Port:        80,
 	}
 
 	BeforeAll(func() {
 		By("applying the sample")
 		_, err := utils.Run(exec.Command("kubectl", "apply", "-f", sample))
-		Expect(err).NotTo(HaveOccurred(), "Failed to apply ToolGateway sample")
+		Expect(err).NotTo(HaveOccurred(), "Failed to apply guarded ToolGateway sample")
 
 		By("waiting for all deployments to be ready")
 		Expect(utils.WaitForAllDeploymentsReady(3 * time.Minute)).To(Succeed())
@@ -49,11 +50,22 @@ var _ = Describe("ToolGateway", Ordered, func() {
 		_, _ = utils.Run(exec.Command("kubectl", "delete", "-f", sample, "--ignore-not-found=true"))
 	})
 
-	It("serves MCP tools/list", func() {
+	It("reports Ready=True after resolving the cross-namespace Guard", func() {
+		By("checking the ToolGateway Ready condition")
+		Eventually(func(g Gomega) {
+			out, err := utils.Run(exec.Command("kubectl", "get", "toolgateway",
+				"tool-gateway-guarded", "-n", "tool-gateway-guarded",
+				"-o", `jsonpath={.status.conditions[?(@.type=="ToolGatewayReady")].status}`))
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(strings.TrimSpace(out)).To(Equal("True"))
+		}, 1*time.Minute, 5*time.Second).Should(Succeed())
+	})
+
+	It("serves MCP tools/list through the guarded gateway", func() {
 		By("listing MCP tools")
 		Eventually(func(g Gomega) {
-			tools := utils.FetchTools(g, gatewayTarget, "/mcp/tool_gateway_routes__echo")
-			g.Expect(tools).To(ContainElement("tool_gateway_routes__echo-echo_message"))
+			tools := utils.FetchTools(g, gatewayTarget, "/mcp/tool_gateway_guarded_routes__echo_guarded")
+			g.Expect(tools).To(ContainElement("tool_gateway_guarded_routes__echo_guarded-echo_message"))
 		}, 1*time.Minute, 5*time.Second).Should(Succeed())
 	})
 })

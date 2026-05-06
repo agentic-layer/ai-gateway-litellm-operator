@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo
+  namespace: default
+  labels:
+    app: echo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echo
+  template:
+    metadata:
+      labels:
+        app: echo
+    spec:
+      containers:
+        - name: echo
+          image: ghcr.io/agentic-layer/echo-mcp-server:0.3.0
+          ports:
+            - containerPort: 8000
+              name: mcp
+          env:
+            - name: ECHO_TOOL_NAME
+              value: "echo_message"
+            - name: ECHO_TOOL_RESPONSE
+              value: "hello from e2e"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo
+  namespace: default
+spec:
+  selector:
+    app: echo
+  ports:
+    - name: mcp
+      port: 80
+      targetPort: 8000
+      protocol: TCP

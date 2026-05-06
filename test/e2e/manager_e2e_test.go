@@ -56,9 +56,6 @@ var _ = Describe("Manager", Ordered, func() {
 		// After each test, check for failures and collect logs, events and pod descriptions for debugging.
 		specReport := CurrentSpecReport()
 		if specReport.Failed() {
-			fetchControllerManagerPodLogs()
-			fetchKubernetesEvents()
-
 			By("Fetching curl-metrics logs")
 			metricsOutput, err := utils.Run(exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace))
 			if err == nil {
