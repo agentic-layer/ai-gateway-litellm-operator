@@ -1,0 +1,84 @@
+# Example: Presidio PII masking guardrail setup for a ToolGateway.
+#
+# This sample mirrors aigateway_guarded.yaml: GuardrailProvider, Guard, and
+# ToolGateway each live in separate namespaces to verify cross-namespace
+# resolution. The Presidio backend is provided by config/samples/backends and
+# referenced cross-namespace via its baseUrl.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tool-gateway-guarded-providers
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tool-gateway-guarded-guards
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tool-gateway-guarded
+---
+# ToolRoute lives in its own namespace to demonstrate cross-namespace
+# attachment to a ToolGateway.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tool-gateway-guarded-routes
+---
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: GuardrailProvider
+metadata:
+  name: presidio
+  namespace: tool-gateway-guarded-providers
+spec:
+  type: presidio-api
+  presidio:
+    baseUrl: "http://presidio.guardrail-providers:80"
+---
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: Guard
+metadata:
+  name: pii-guard
+  namespace: tool-gateway-guarded-guards
+spec:
+  mode:
+    - pre_call
+  description: Detect and mask PII in user inputs before they are sent to the LLM.
+  providerRef:
+    name: presidio
+    namespace: tool-gateway-guarded-providers
+  presidio:
+    language: en
+    scoreThresholds:
+      ALL: "0.5"
+    entityActions:
+      PHONE_NUMBER: MASK
+      EMAIL_ADDRESS: MASK
+      CREDIT_CARD: MASK
+      PERSON: MASK
+---
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: ToolGateway
+metadata:
+  name: tool-gateway-guarded
+  namespace: tool-gateway-guarded
+spec:
+  toolGatewayClassName: litellm
+  guardrails:
+    - name: pii-guard
+      namespace: tool-gateway-guarded-guards
+---
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: ToolRoute
+metadata:
+  name: echo-guarded
+  namespace: tool-gateway-guarded-routes
+spec:
+  toolGatewayRef:
+    name: tool-gateway-guarded
+    namespace: tool-gateway-guarded
+  upstream:
+    external:
+      url: http://echo.default/mcp

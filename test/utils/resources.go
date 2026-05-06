@@ -35,3 +35,14 @@ func VerifyDeploymentReady(name, namespace string, timeout time.Duration) error 
 	}
 	return nil
 }
+
+// WaitForAllDeploymentsReady waits for every Deployment in every namespace to
+// reach condition=Available within the given timeout.
+func WaitForAllDeploymentsReady(timeout time.Duration) error {
+	cmd := exec.Command("kubectl", "wait", "deployment", "--all", "-A",
+		"--for=condition=Available", "--timeout="+timeout.String())
+	if output, err := Run(cmd); err != nil {
+		return fmt.Errorf("not all deployments became ready: %s", output)
+	}
+	return nil
+}

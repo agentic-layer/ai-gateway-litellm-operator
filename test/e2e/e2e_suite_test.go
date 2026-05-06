@@ -20,24 +20,64 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/agentic-layer/ai-gateway-litellm/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-// operatorName is the name of the operator being tested
-const operatorName = "ai-gateway-litellm-operator"
-
 // namespace where the project is deployed in
 const namespace = "ai-gateway-litellm-system"
 
-// Namespaces for cross-namespace guardrail testing
 const (
-	guardrailProviderNamespace = "guardrail-providers"
+	certmanagerVersion = "v1.19.1"
+	certmanagerURLTmpl = "https://github.com/cert-manager/cert-manager/releases/download/%s/cert-manager.yaml"
 )
+
+// isCertManagerCRDsInstalled checks if cert-manager CRDs are present.
+func isCertManagerCRDsInstalled() bool {
+	certManagerCRDs := []string{
+		"certificates.cert-manager.io",
+		"issuers.cert-manager.io",
+		"clusterissuers.cert-manager.io",
+	}
+	output, err := utils.Run(exec.Command("kubectl", "get", "crds"))
+	if err != nil {
+		return false
+	}
+	for _, crd := range certManagerCRDs {
+		for _, line := range utils.GetNonEmptyLines(output) {
+			if strings.Contains(line, crd) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// installCertManager applies the cert-manager bundle and waits for the webhook
+// to be ready and its CA bundle to be populated.
+func installCertManager() error {
+	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
+	if _, err := utils.Run(exec.Command("kubectl", "apply", "-f", url)); err != nil {
+		return err
+	}
+	if _, err := utils.Run(exec.Command("kubectl", "wait", "deployment.apps/cert-manager-webhook",
+		"--for", "condition=Available",
+		"--namespace", "cert-manager",
+		"--timeout", "5m",
+	)); err != nil {
+		return err
+	}
+	_, err := utils.Run(exec.Command("kubectl", "wait", "validatingwebhookconfiguration/cert-manager-webhook",
+		"--for", "jsonpath={.webhooks[0].clientConfig.caBundle}",
+		"--namespace", "cert-manager",
+		"--timeout", "5m",
+	))
+	return err
+}
 
 var (
 	// Optional Environment Variables:
@@ -79,10 +119,10 @@ var _ = BeforeSuite(func() {
 	// Setup CertManager before the suite if not skipped and if not already installed
 	if !skipCertManagerInstall {
 		By("checking if cert manager is installed already")
-		isCertManagerAlreadyInstalled = utils.IsCertManagerCRDsInstalled()
+		isCertManagerAlreadyInstalled = isCertManagerCRDsInstalled()
 		if !isCertManagerAlreadyInstalled {
 			_, _ = fmt.Fprintf(GinkgoWriter, "Installing CertManager...\n")
-			Expect(utils.InstallCertManager()).To(Succeed(), "Failed to install CertManager")
+			Expect(installCertManager()).To(Succeed(), "Failed to install CertManager")
 		} else {
 			_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: CertManager is already installed. Skipping installation...\n")
 		}
@@ -102,21 +142,9 @@ var _ = BeforeSuite(func() {
 	_, err = utils.Run(exec.Command("make", "install"))
 	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
-	By("deploying WireMock mock LLM provider")
-	_, err = utils.Run(exec.Command("kubectl", "apply", "-f", "config/samples/wiremock/wiremock.yaml"))
-	Expect(err).NotTo(HaveOccurred(), "Failed to deploy WireMock")
-
-	By("deploying Presidio PII detection services")
-	_, err = utils.Run(exec.Command("kubectl", "apply", "-f", "config/samples/presidio.yaml"))
-	Expect(err).NotTo(HaveOccurred(), "Failed to deploy Presidio services")
-
-	By("waiting for WireMock to be ready")
-	Expect(utils.VerifyDeploymentReady("wiremock", "default", 3*time.Minute)).
-		To(Succeed(), "WireMock deployment did not become ready")
-
-	By("waiting for Presidio to be ready")
-	Expect(utils.VerifyDeploymentReady("presidio", guardrailProviderNamespace, 5*time.Minute)).
-		To(Succeed(), "presidio deployment did not become ready")
+	By("deploying backends")
+	_, err = utils.Run(exec.Command("kubectl", "apply", "-k", "config/samples/backends"))
+	Expect(err).NotTo(HaveOccurred(), "Failed to deploy backends")
 
 	By("deploying the controller-manager")
 	_, err = utils.Run(exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage)))
@@ -130,13 +158,8 @@ var _ = AfterSuite(func() {
 	By("uninstalling CRDs")
 	_, _ = utils.Run(exec.Command("make", "uninstall"))
 
-	By("removing WireMock mock LLM provider")
-	_, _ = utils.Run(exec.Command("kubectl", "delete",
-		"-f", "config/samples/wiremock/wiremock.yaml", "--ignore-not-found=true"))
-
-	By("removing Presidio services")
-	_, _ = utils.Run(exec.Command("kubectl", "delete",
-		"-f", "config/samples/presidio.yaml", "--ignore-not-found=true"))
+	By("removing backends")
+	_, _ = utils.Run(exec.Command("kubectl", "delete", "-k", "config/samples/backends"))
 
 	By("removing manager namespace")
 	_, _ = utils.Run(exec.Command("kubectl", "delete", "ns", namespace))
@@ -144,31 +167,8 @@ var _ = AfterSuite(func() {
 	// Note: Not tearing down CertManager for potential reuse during local testing
 })
 
-func fetchKubernetesEvents() {
-	By("Fetching Kubernetes events")
-	eventsOutput, err := utils.Run(exec.Command("kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp"))
-	if err == nil {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Kubernetes events:\n%s", eventsOutput)
-	} else {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Kubernetes events: %s", err)
+var _ = JustAfterEach(func() {
+	if CurrentSpecReport().Failed() {
+		utils.CollectDiagnostics()
 	}
-}
-
-func fetchControllerManagerPodLogs() {
-	By("Fetching controller manager pod logs")
-	controllerLogs, err := utils.Run(exec.Command("kubectl", "logs",
-		"-l", "app.kubernetes.io/name="+operatorName, "-n", namespace))
-	if err == nil {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Controller logs:\n %s", controllerLogs)
-	} else {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Controller logs: %s", err)
-	}
-}
-
-func fetchPodLogs(label, namespace string, tail int) {
-	logs, err := utils.Run(exec.Command("kubectl", "logs",
-		"-l", label, "-n", namespace, fmt.Sprintf("--tail=%d", tail)))
-	if err == nil {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Logs for %s:\n%s", label, logs)
-	}
-}
+})

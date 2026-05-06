@@ -1,0 +1,5 @@
+resources:
+- presidio.yaml
+- tool-server.yaml
+- wiremock.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

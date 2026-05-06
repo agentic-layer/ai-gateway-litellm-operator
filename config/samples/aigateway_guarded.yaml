@@ -2,30 +2,33 @@
 #
 # This sample demonstrates how to configure a Presidio-based PII guardrail
 # with cross-namespace references. The GuardrailProvider, Guard, and AiGateway
-# each live in separate namespaces to verify cross-namespace resolution:
-#   - GuardrailProvider + Presidio services: "guardrail-providers" namespace
-#   - Guard: "guards" namespace
-#   - AiGateway: "default" namespace
+# each live in separate namespaces to verify cross-namespace resolution.
 #
-# The GuardrailProvider.spec.presidio.baseUrl uses a cross-namespace DNS name
-# so that LiteLLM (running in the AiGateway's namespace) can reach Presidio.
+# The GuardrailProvider.spec.presidio.baseUrl points at the shared Presidio
+# backend deployed by config/samples/backends, which lives in its own
+# namespace and is referenced cross-namespace.
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: guardrail-providers
+  name: ai-gateway-guarded-providers
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: guards
+  name: ai-gateway-guarded-guards
 ---
-# GuardrailProvider references the Presidio backend service.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-gateway-guarded
+---
+# GuardrailProvider references the shared Presidio backend service.
 apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: GuardrailProvider
 metadata:
   name: presidio
-  namespace: guardrail-providers
+  namespace: ai-gateway-guarded-providers
 spec:
   type: presidio-api
   presidio:
@@ -36,14 +39,14 @@ apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: Guard
 metadata:
   name: pii-guard
-  namespace: guards
+  namespace: ai-gateway-guarded-guards
 spec:
   mode:
     - pre_call
   description: Detect and mask PII in user inputs before they are sent to the LLM.
   providerRef:
     name: presidio
-    namespace: guardrail-providers
+    namespace: ai-gateway-guarded-providers
   presidio:
     language: en
     scoreThresholds:
@@ -55,12 +58,12 @@ spec:
       PERSON: MASK
 ---
 # AiGateway with Presidio guardrail enabled.
-# Routes to the WireMock mock LLM (apply wiremock/wiremock.yaml first).
+# Routes to the WireMock mock LLM (apply config/samples/backends first).
 apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: AiGateway
 metadata:
   name: ai-gateway-pii
-  namespace: default
+  namespace: ai-gateway-guarded
 spec:
   aiGatewayClassName: litellm
   aiModels:
@@ -68,9 +71,9 @@ spec:
       name: gpt-3.5-turbo
   env:
     - name: OPENAI_API_BASE
-      value: http://wiremock:8080
+      value: http://wiremock.default:8080
     - name: OPENAI_API_KEY
       value: test-key
   guardrails:
     - name: pii-guard
-      namespace: guards
+      namespace: ai-gateway-guarded-guards
