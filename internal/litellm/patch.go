@@ -87,11 +87,13 @@ func LoadPatch(ctx context.Context, c client.Client, ns, cmName string) (map[str
 	return parsed, nil
 }
 
-// RenderConfigWithPatch marshals cfg to YAML and, when patch is non-nil,
-// deep-merges patch on top using ApplyPatch. The result is a YAML string
-// suitable for the operator-owned ConfigMap consumed by the LiteLLM proxy.
+// RenderConfigWithPatch marshals cfg to YAML and, when patch is non-empty,
+// deep-merges patch on top using ApplyPatch. A nil or empty patch
+// short-circuits to RenderConfig so the no-op case is byte-identical to the
+// pre-patch render path. The result is a YAML string suitable for the
+// operator-owned ConfigMap consumed by the LiteLLM proxy.
 func RenderConfigWithPatch(cfg LiteLLMConfig, patch map[string]any) (string, error) {
-	if patch == nil {
+	if len(patch) == 0 {
 		return RenderConfig(cfg)
 	}
 	raw, err := yaml.Marshal(cfg)

@@ -351,3 +351,24 @@ func TestRenderConfigWithPatch_NullDeletesGeneratedKey(t *testing.T) {
 		t.Errorf("expected request_timeout to be removed, got:\n%s", got)
 	}
 }
+
+func TestRenderConfigWithPatch_EmptyMapEqualsRenderConfig(t *testing.T) {
+	cfg := LiteLLMConfig{
+		ModelList: []ModelConfig{{
+			ModelName:     "gpt-4",
+			LiteLLMParams: LiteLLMParams{Model: "openai/gpt-4", ApiKey: "os.environ/OPENAI_API_KEY"},
+		}},
+		LiteLLMSettings: LiteLLMSettings{RequestTimeout: 600, Callbacks: []string{"otel", "prometheus"}},
+	}
+	want, err := RenderConfig(cfg)
+	if err != nil {
+		t.Fatalf("RenderConfig: %v", err)
+	}
+	got, err := RenderConfigWithPatch(cfg, map[string]any{})
+	if err != nil {
+		t.Fatalf("RenderConfigWithPatch: %v", err)
+	}
+	if got != want {
+		t.Errorf("empty-map patch should match RenderConfig output\n got:\n%s\nwant:\n%s", got, want)
+	}
+}
