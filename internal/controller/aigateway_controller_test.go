@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	gatewayv1alpha1 "github.com/agentic-layer/agent-runtime-operator/api/v1alpha1"
+	"github.com/agentic-layer/ai-gateway-litellm/internal/litellm"
 )
 
 const (
@@ -823,7 +824,7 @@ var _ = Describe("AiGateway Controller", func() {
 					Name:      gatewayKey.Name,
 					Namespace: testNamespace,
 					Annotations: map[string]string{
-						"ai-gateway-litellm.agentic-layer.ai/config-patch": "missing-cm",
+						litellm.ConfigPatchAnnotation: "missing-cm",
 					},
 				},
 				Spec: gatewayv1alpha1.AiGatewaySpec{
@@ -880,7 +881,7 @@ var _ = Describe("AiGateway Controller", func() {
 					Name:      gatewayKey.Name,
 					Namespace: testNamespace,
 					Annotations: map[string]string{
-						"ai-gateway-litellm.agentic-layer.ai/config-patch": patchCMKey.Name,
+						litellm.ConfigPatchAnnotation: patchCMKey.Name,
 					},
 				},
 				Spec: gatewayv1alpha1.AiGatewaySpec{
@@ -932,6 +933,7 @@ var _ = Describe("AiGateway Controller", func() {
 			after := &appsv1.Deployment{}
 			Expect(k8sClient.Get(ctx, gatewayKey, after)).To(Succeed())
 			afterHash := after.Spec.Template.Annotations["gateway.agentic-layer.ai/config-hash"]
+			Expect(afterHash).ToNot(BeEmpty(), "config-hash annotation must be set after second reconcile")
 			Expect(afterHash).ToNot(Equal(beforeHash), "config-hash should change when patch.yaml changes")
 
 			afterCM := &corev1.ConfigMap{}
@@ -944,9 +946,13 @@ var _ = Describe("AiGateway Controller", func() {
 			_, err := rec.Reconcile(ctx, reconcile.Request{NamespacedName: gatewayKey})
 			Expect(err).NotTo(HaveOccurred())
 
+			ownedCMBefore := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: gatewayKey.Name + "-config", Namespace: testNamespace}, ownedCMBefore)).To(Succeed())
+			Expect(ownedCMBefore.Data["config.yaml"]).To(ContainSubstring("router_settings"), "patch should be present before annotation removal")
+
 			refreshed := &gatewayv1alpha1.AiGateway{}
 			Expect(k8sClient.Get(ctx, gatewayKey, refreshed)).To(Succeed())
-			delete(refreshed.Annotations, "ai-gateway-litellm.agentic-layer.ai/config-patch")
+			delete(refreshed.Annotations, litellm.ConfigPatchAnnotation)
 			Expect(k8sClient.Update(ctx, refreshed)).To(Succeed())
 
 			_, err = rec.Reconcile(ctx, reconcile.Request{NamespacedName: gatewayKey})
