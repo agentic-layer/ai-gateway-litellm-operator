@@ -1,6 +1,8 @@
 resources:
 - aigateway.yaml
 - aigateway_guarded.yaml
+- aigateway_with_patch.yaml
 - toolgateway.yaml
 - toolgateway_guarded.yaml
+- toolgateway_with_patch.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
