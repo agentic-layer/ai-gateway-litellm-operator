@@ -56,12 +56,14 @@ const (
 	ReasonToolGatewayDeployment           = "DeploymentFailed"
 	ReasonToolGatewayService              = "ServiceFailed"
 	ReasonToolGatewayWorkload             = "WorkloadFailed"
+	ReasonToolGatewayConfigPatchInvalid   = "ConfigPatchInvalid"
 )
 
 // PhaseError phase names for reconcile steps that translate user input.
 const (
 	phaseConfigRender = "ConfigRender"
 	phaseGuardrails   = "Guardrails"
+	phaseConfigPatch  = "ConfigPatch"
 )
 
 // ToolGatewayReconciler reconciles a ToolGateway object. It is the sole writer
@@ -197,7 +199,12 @@ func (r *ToolGatewayReconciler) reconcile(ctx context.Context, gw *gatewayv1alph
 		Guardrails: guardrails,
 	}
 
-	configYAML, err := litellm.RenderConfig(cfg)
+	patch, err := litellm.LoadPatch(ctx, r.Client, gw.Namespace, gw.Annotations[litellm.ConfigPatchAnnotation])
+	if err != nil {
+		return nil, err
+	}
+
+	configYAML, err := litellm.RenderConfigWithPatch(cfg, patch)
 	if err != nil {
 		return nil, &litellm.PhaseError{Phase: phaseConfigRender, Err: err}
 	}
@@ -235,6 +242,8 @@ func (r *ToolGatewayReconciler) applyWorkloadError(gw *gatewayv1alpha1.ToolGatew
 			reason = ReasonToolGatewayConfigGenFailed
 		case phaseGuardrails:
 			reason = ReasonToolGatewayGuardrails
+		case phaseConfigPatch:
+			reason = ReasonToolGatewayConfigPatchInvalid
 		case "ConfigMap":
 			reason = ReasonToolGatewayConfigMap
 		case "Secret":
@@ -453,7 +462,7 @@ func isTransientPhaseError(err error) bool {
 		return true
 	}
 	switch pe.Phase {
-	case phaseConfigRender, phaseGuardrails:
+	case phaseConfigRender, phaseGuardrails, phaseConfigPatch:
 		return false
 	default:
 		return true
