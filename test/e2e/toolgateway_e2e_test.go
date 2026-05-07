@@ -71,3 +71,51 @@ var _ = Describe("ToolGateway", Ordered, func() {
 		}, 1*time.Minute, 5*time.Second).Should(Succeed())
 	})
 })
+
+var _ = Describe("ToolGateway with config patch", Ordered, func() {
+	const sample = "config/samples/toolgateway_with_patch.yaml"
+
+	BeforeAll(func() {
+		_, err := utils.Run(exec.Command("kubectl", "apply", "-f", sample))
+		Expect(err).NotTo(HaveOccurred(), "Failed to apply patched ToolGateway sample")
+		Expect(utils.WaitForAllDeploymentsReady(3 * time.Minute)).To(Succeed())
+	})
+
+	AfterAll(func() {
+		_, _ = utils.Run(exec.Command("kubectl", "delete", "-f", sample, "--ignore-not-found=true"))
+	})
+
+	It("rejects unauthenticated requests after master_key is patched in", func() {
+		By("patching the patch ConfigMap to introduce general_settings.master_key")
+		patchScript := `kubectl -n tool-gateway-patched patch configmap tool-gateway-patch --type merge -p '` +
+			`{"data":{"patch.yaml":"mcp_servers:\n  tool-gateway-patched-routes__echo:\n    auth_type: oauth2\n    headers:\n      Authorization: os.environ/MCP_TOKEN\ngeneral_settings:\n  master_key: sk-e2e-tool-1234\n"}}'`
+		_, err := utils.Run(exec.Command("bash", "-c", patchScript))
+		Expect(err).NotTo(HaveOccurred(), "Failed to patch tool-gateway-patch ConfigMap")
+
+		Expect(utils.WaitForAllDeploymentsReady(3 * time.Minute)).To(Succeed())
+
+		target := utils.ServiceTarget{Namespace: "tool-gateway-patched", ServiceName: "tool-gateway", Port: 80}
+
+		By("expecting non-2xx for unauthenticated /v1/models on the ToolGateway port")
+		Eventually(func(g Gomega) {
+			_, statusCode, err := utils.MakeServiceRequest(target, func(baseURL string) ([]byte, int, error) {
+				b, _, status, err := utils.GetRequest(baseURL + "/v1/models")
+				return b, status, err
+			})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(statusCode).ToNot(Equal(200))
+		}, 1*time.Minute, 5*time.Second).Should(Succeed())
+
+		By("expecting 200 with the configured master key")
+		Eventually(func(g Gomega) {
+			_, statusCode, err := utils.MakeServiceRequest(target, func(baseURL string) ([]byte, int, error) {
+				b, _, status, err := utils.GetRequestWithHeaders(baseURL+"/v1/models", map[string]string{
+					"Authorization": "Bearer sk-e2e-tool-1234",
+				})
+				return b, status, err
+			})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(statusCode).To(Equal(200))
+		}, 1*time.Minute, 5*time.Second).Should(Succeed())
+	})
+})
