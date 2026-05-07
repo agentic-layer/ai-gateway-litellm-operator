@@ -224,6 +224,9 @@ func TestLoadPatch_InvalidYAML(t *testing.T) {
 	if !errors.As(err, &pe) || pe.Phase != "ConfigPatch" {
 		t.Fatalf("expected *PhaseError{Phase:ConfigPatch}, got %v", err)
 	}
+	if !strings.Contains(err.Error(), "patch.yaml") {
+		t.Errorf("expected error to mention 'patch.yaml', got: %v", err)
+	}
 }
 
 func TestLoadPatch_NullPatchIsNoop(t *testing.T) {
