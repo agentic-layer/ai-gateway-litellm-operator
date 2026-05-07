@@ -126,7 +126,7 @@ spec:
 - `external.url` — an arbitrary HTTP(S) URL. Transport is auto-detected as `sse` when the path ends in `/sse`, otherwise `http`.
 - `toolServerRef` — a reference to a `ToolServer` resource managed in the cluster. The operator builds the in-cluster URL and uses `ToolServer.spec.transportType` (`http` or `sse`) for the transport.
 
-Each successfully-attached `ToolRoute` is published at `http://<gateway>.<namespace>.svc.cluster.local/mcp/<route-namespace>__<route-name>` and its `status.url` is updated accordingly.
+Each successfully-attached `ToolRoute` is published at `http://<gateway>.<namespace>.svc.cluster.local/mcp/<route_namespace>__<route_name>` and its `status.url` is updated accordingly.
 
 Both gateway kinds support `spec.guardrails` to attach `Guard` resources for traffic inspection (e.g. PII masking via Presidio). See `config/samples/aigateway_guarded.yaml` and `config/samples/toolgateway_guarded.yaml`.
 

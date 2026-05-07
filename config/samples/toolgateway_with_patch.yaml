@@ -25,7 +25,9 @@ data:
   # fail until the env var is set.
   patch.yaml: |
     mcp_servers:
-      tool-gateway-patched-routes__echo:
+      # mcp_servers key matches the operator's <namespace>__<name> scheme
+      # with hyphens replaced by underscores (LiteLLM rejects '-' in names).
+      tool_gateway_patched_routes__echo:
         auth_type: oauth2
         headers:
           Authorization: os.environ/MCP_TOKEN
