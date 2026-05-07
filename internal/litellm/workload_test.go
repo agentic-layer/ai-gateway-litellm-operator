@@ -176,6 +176,29 @@ func TestReconcileWorkload_InjectsPrometheusMultiprocDir(t *testing.T) {
 	}
 }
 
+func TestReconcileWorkload_SetsSecretHashAnnotation(t *testing.T) {
+	s := workloadScheme(t)
+	owner := newOwner("gw", "default")
+	c := fake.NewClientBuilder().WithScheme(s).WithObjects(owner).Build()
+
+	w := GatewayWorkload{
+		Name: "gw", Namespace: "default", Owner: owner,
+		ContainerPort: 4000, ServicePort: 4000,
+		ConfigYAML: "model_list: []\n",
+	}
+	if err := ReconcileWorkload(context.Background(), c, s, w); err != nil {
+		t.Fatalf("ReconcileWorkload: %v", err)
+	}
+
+	var dep appsv1.Deployment
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "gw", Namespace: "default"}, &dep); err != nil {
+		t.Fatalf("Deployment not found: %v", err)
+	}
+	if dep.Spec.Template.Annotations[secretHashAnnotation] == "" {
+		t.Error("secret-hash annotation not set on pod template")
+	}
+}
+
 func TestReconcileWorkload_PhaseErrorTagsConfigMapFailure(t *testing.T) {
 	// Use a scheme without corev1 to force the ConfigMap apply to fail with
 	// a "no kind is registered" error.
