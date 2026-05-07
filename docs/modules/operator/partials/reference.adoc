@@ -13,7 +13,7 @@ The following Custom Resource Definitions (CRDs) are reconciled by this operator
 * *AiGateway*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_aigateways.yaml
 * *AiGatewayClass*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_aigatewayclasses.yaml
 
-The operator owns the `litellm` `AiGatewayClass` (controller `aigateway.agentic-layer.ai/ai-gateway-litellm-controller`) and reconciles every `AiGateway` that explicitly references it or — when no class is set — relies on it as the default class.
+The operator owns the `litellm` `AiGatewayClass` (controller `aigateway.agentic-layer.ai/ai-gateway-litellm-controller`) and reconciles every `AiGateway` whose `spec.aiGatewayClassName` is set to `litellm`. The shipped `litellm` `AiGatewayClass` is **not** marked as the cluster default; see <<marking-classes-default>> to opt in.
 
 === Tool Gateway
 
@@ -22,7 +22,7 @@ The operator owns the `litellm` `AiGatewayClass` (controller `aigateway.agentic-
 * *ToolRoute*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_toolroutes.yaml
 * *ToolServer*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_toolservers.yaml
 
-The operator owns the `litellm` `ToolGatewayClass` (controller `litellm.agentic-layer.ai/tool-gateway-litellm-controller`) and reconciles every `ToolGateway` that explicitly references it or — when no class is set — relies on it as the default class. Each `ToolRoute` whose `toolGatewayRef` targets a reconciled gateway becomes an entry in the LiteLLM `mcp_servers` block; the route is exposed at `http://<gateway>.<namespace>.svc.cluster.local/mcp/<namespace>__<route-name>`.
+The operator owns the `litellm` `ToolGatewayClass` (controller `litellm.agentic-layer.ai/tool-gateway-litellm-controller`) and reconciles every `ToolGateway` whose `spec.toolGatewayClassName` is set to `litellm`. The shipped `litellm` `ToolGatewayClass` is **not** marked as the cluster default; see <<marking-classes-default>> to opt in. Each `ToolRoute` whose `toolGatewayRef` targets a reconciled gateway becomes an entry in the LiteLLM `mcp_servers` block; the route is exposed at `http://<gateway>.<namespace>.svc.cluster.local/mcp/<namespace>__<route-name>`.
 
 === Guardrails
 
@@ -30,3 +30,32 @@ The operator owns the `litellm` `ToolGatewayClass` (controller `litellm.agentic-
 * *GuardrailProvider*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_guardrailproviders.yaml
 
 Both `AiGateway.spec.guardrails` and `ToolGateway.spec.guardrails` accept references to `Guard` resources, which the operator translates into LiteLLM guardrail callbacks.
+
+[[marking-classes-default]]
+== Marking a gateway class as default
+
+The shipped `litellm` `AiGatewayClass` and `ToolGatewayClass` are **not** marked as the cluster default. To claim `AiGateway` or `ToolGateway` resources that omit the class name field, either set the field explicitly on every gateway, or add the corresponding `is-default-class` annotation via a Kustomize overlay:
+
+[source,yaml]
+----
+# kustomization.yaml
+resources:
+  - https://github.com/agentic-layer/ai-gateway-litellm-operator/releases/latest/download/install.yaml
+patches:
+  - patch: |-
+      apiVersion: runtime.agentic-layer.ai/v1alpha1
+      kind: AiGatewayClass
+      metadata:
+        name: litellm
+        annotations:
+          aigatewayclass.kubernetes.io/is-default-class: "true"
+  - patch: |-
+      apiVersion: runtime.agentic-layer.ai/v1alpha1
+      kind: ToolGatewayClass
+      metadata:
+        name: litellm
+        annotations:
+          toolgatewayclass.kubernetes.io/is-default-class: "true"
+----
+
+Use this only when this operator is the single AI/Tool Gateway implementation in the cluster — multiple defaults across operators produce non-deterministic ownership of unlabeled `AiGateway` and `ToolGateway` resources.
