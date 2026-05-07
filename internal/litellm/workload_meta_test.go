@@ -88,3 +88,19 @@ func TestBuildPodTemplateAnnotations_HashesAlwaysWin(t *testing.T) {
 		t.Errorf("user-supplied annotation dropped")
 	}
 }
+
+func TestBuildPodTemplateAnnotations_PodSecretHashCannotOverride(t *testing.T) {
+	pod := &gatewayv1alpha1.EmbeddedMetadata{
+		Annotations: map[string]string{
+			"gateway.agentic-layer.ai/secret-hash": "user-supplied",
+			"custom":                               "kept",
+		},
+	}
+	got := BuildPodTemplateAnnotations(nil, pod, "config", "operator-hash")
+	if got["gateway.agentic-layer.ai/secret-hash"] != "operator-hash" {
+		t.Errorf("operator secret-hash must override pod annotation; got %q", got["gateway.agentic-layer.ai/secret-hash"])
+	}
+	if got["custom"] != "kept" {
+		t.Errorf("user-supplied pod annotation dropped")
+	}
+}
