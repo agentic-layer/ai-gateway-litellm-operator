@@ -217,8 +217,10 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 }
 
 // generateAiGatewayConfig renders the LiteLLM config for aiGateway, optionally
-// layering a user-supplied patch on top. Returns *litellm.PhaseError tagged with
-// the failing phase ("Guardrails" / "ConfigRender" / "ConfigPatch").
+// layering a user-supplied patch on top. Returns *litellm.PhaseError tagged
+// with the failing phase. The Reconcile config-failure branch maps "Guardrails"
+// and "ConfigPatch" to dedicated reasons; all other phases (e.g. "ConfigRender")
+// fall through to ReasonConfigGenerationFailed.
 func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway) (string, error) {
 
 	log := logf.FromContext(ctx)
