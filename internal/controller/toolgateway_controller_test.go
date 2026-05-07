@@ -202,6 +202,112 @@ var _ = Describe("ToolGateway Controller", Ordered, func() {
 			Expect(refreshedGw.Status.Url).To(Equal("http://gw1.tool-gateway.svc.cluster.local"))
 		})
 	})
+
+	Context("when the config-patch annotation references a missing ConfigMap", func() {
+		gwKey := types.NamespacedName{Name: "tg-patch-missing", Namespace: toolGatewayNamespace}
+
+		BeforeEach(func() {
+			gw := &gatewayv1alpha1.ToolGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      gwKey.Name,
+					Namespace: gwKey.Namespace,
+					Annotations: map[string]string{
+						litellm.ConfigPatchAnnotation: "missing-cm",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			gw := &gatewayv1alpha1.ToolGateway{}
+			if err := k8sClient.Get(ctx, gwKey, gw); err == nil {
+				_ = k8sClient.Delete(ctx, gw)
+			}
+		})
+
+		It("flips Configured/Ready to False with ConfigPatchInvalid", func() {
+			rec := &ToolGatewayReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := rec.Reconcile(ctx, reconcile.Request{NamespacedName: gwKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			refreshed := &gatewayv1alpha1.ToolGateway{}
+			Expect(k8sClient.Get(ctx, gwKey, refreshed)).To(Succeed())
+			cond := findRouteCondition(refreshed.Status.Conditions, ToolGatewayConfigured)
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal("ConfigPatchInvalid"))
+			Expect(cond.Message).To(ContainSubstring("not found"))
+		})
+	})
+
+	Context("when the config-patch annotation references a valid ConfigMap that adds mcp_servers auth", func() {
+		gwKey := types.NamespacedName{Name: "tg-patch-ok", Namespace: toolGatewayNamespace}
+		patchCMKey := types.NamespacedName{Name: "tg-patch", Namespace: toolGatewayNamespace}
+		routeKey := types.NamespacedName{Name: "echo-route", Namespace: "default"}
+		tsKey := types.NamespacedName{Name: "echo-ts", Namespace: "default"}
+
+		BeforeEach(func() {
+			Expect(k8sClient.Create(ctx, &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: patchCMKey.Name, Namespace: patchCMKey.Namespace},
+				Data: map[string]string{
+					"patch.yaml": "mcp_servers:\n  default__echo_route:\n    auth_type: oauth2\n    headers:\n      Authorization: os.environ/TOKEN\n",
+				},
+			})).To(Succeed())
+
+			gw := &gatewayv1alpha1.ToolGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      gwKey.Name,
+					Namespace: gwKey.Namespace,
+					Annotations: map[string]string{
+						litellm.ConfigPatchAnnotation: patchCMKey.Name,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+
+			ts := &gatewayv1alpha1.ToolServer{
+				ObjectMeta: metav1.ObjectMeta{Name: tsKey.Name, Namespace: tsKey.Namespace},
+				Spec:       gatewayv1alpha1.ToolServerSpec{Protocol: "mcp", TransportType: "http", Image: "ignored", Port: 8080},
+			}
+			Expect(k8sClient.Create(ctx, ts)).To(Succeed())
+
+			route := &gatewayv1alpha1.ToolRoute{
+				ObjectMeta: metav1.ObjectMeta{Name: routeKey.Name, Namespace: routeKey.Namespace},
+				Spec: gatewayv1alpha1.ToolRouteSpec{
+					ToolGatewayRef: &corev1.ObjectReference{Name: gwKey.Name, Namespace: gwKey.Namespace},
+					Upstream:       gatewayv1alpha1.ToolRouteUpstream{ToolServerRef: &corev1.ObjectReference{Name: tsKey.Name}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, route)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			for _, obj := range []client.Object{
+				&gatewayv1alpha1.ToolRoute{ObjectMeta: metav1.ObjectMeta{Name: routeKey.Name, Namespace: routeKey.Namespace}},
+				&gatewayv1alpha1.ToolServer{ObjectMeta: metav1.ObjectMeta{Name: tsKey.Name, Namespace: tsKey.Namespace}},
+				&gatewayv1alpha1.ToolGateway{ObjectMeta: metav1.ObjectMeta{Name: gwKey.Name, Namespace: gwKey.Namespace}},
+				&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: patchCMKey.Name, Namespace: patchCMKey.Namespace}},
+			} {
+				_ = k8sClient.Delete(ctx, obj)
+			}
+		})
+
+		It("preserves operator-generated fields and adds patch fields", func() {
+			rec := &ToolGatewayReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := rec.Reconcile(ctx, reconcile.Request{NamespacedName: gwKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			ownedCM := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: gwKey.Name + "-config", Namespace: gwKey.Namespace}, ownedCM)).To(Succeed())
+			yamlStr := ownedCM.Data["config.yaml"]
+			Expect(yamlStr).To(ContainSubstring("mcp_servers"))
+			Expect(yamlStr).To(ContainSubstring("default__echo_route"))
+			Expect(yamlStr).To(ContainSubstring("url: http://"), "operator-generated url must survive merge")
+			Expect(yamlStr).To(ContainSubstring("auth_type: oauth2"), "patch field must be merged in")
+			Expect(yamlStr).To(ContainSubstring("Authorization: os.environ/TOKEN"))
+		})
+	})
 })
 
 // findRouteCondition returns a copy of the condition with the given type, or nil.
