@@ -410,6 +410,12 @@ func (r *AiGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return requests
 	})
 
+	// enqueueAiGatewaysForPatchConfigMap enqueues reconcile requests for all
+	// AiGateways in the namespace whose config-patch annotation matches the
+	// name of the changed ConfigMap. The Owns(&corev1.ConfigMap{}) above
+	// already covers the operator-owned <gateway>-config ConfigMap; this
+	// watch is for user-supplied patch ConfigMaps. The workqueue dedupes if
+	// both fire for the same gateway.
 	enqueueAiGatewaysForPatchConfigMap := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		log := logf.FromContext(ctx)
 		var gwList gatewayv1alpha1.AiGatewayList
