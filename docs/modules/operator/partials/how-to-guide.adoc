@@ -1,10 +1,10 @@
-= Install the AI Gateway Operator for LiteLLM
+= Install the LiteLLM Gateway Operator
 
-This guide walks you through installing the LiteLLM AI Gateway Operator on your Kubernetes cluster.
+This guide walks you through installing the LiteLLM Gateway Operator (which reconciles `AiGateway` and `ToolGateway` resources) on your Kubernetes cluster.
 
 == Dependencies
 
-The LiteLLM AI Gateway requires the following dependencies:
+The LiteLLM Gateway Operator requires the following dependencies:
 
 * **Kubernetes**: A running Kubernetes cluster
 * **Agent Runtime Operator**: Includes the required CRDs for AI Gateways. See xref:agent-runtime-operator:agent-runtime:how-to-guide.adoc[Install the Agent Runtime Operator] for installation instructions.
@@ -13,17 +13,17 @@ The LiteLLM AI Gateway requires the following dependencies:
 
 === Install with Kubernetes YAML
 
-==== Install the LiteLLM AI Gateway
+==== Install the LiteLLM Gateway Operator
 
 [source,bash]
 ----
-# Install the operator
-kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm-operator/releases/download/v0.2.0/install.yaml
+# Install the operator (always pulls the latest release)
+kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm-operator/releases/latest/download/install.yaml
 # Wait for the operator to be ready
 kubectl wait --for=condition=Available --timeout=60s -n ai-gateway-litellm-system deployment/ai-gateway-litellm-controller-manager
 ----
 
-Find the latest version at https://github.com/agentic-layer/ai-gateway-litellm-operator/releases
+Browse all releases at https://github.com/agentic-layer/ai-gateway-litellm-operator/releases
 
 === Install with Flux
 

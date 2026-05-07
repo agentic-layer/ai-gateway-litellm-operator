@@ -1,6 +1,11 @@
-# AI Gateway LiteLLM
+# LiteLLM Gateway Operator
 
-"AI Gateway LiteLLM" is a Kubernetes operator that creates and manages [LiteLLM](https://www.litellm.ai/) deployments.
+The LiteLLM Gateway Operator is a Kubernetes operator that creates and manages [LiteLLM](https://www.litellm.ai/) deployments fronting both LLM and MCP tool traffic.
+
+It reconciles two kinds of gateway:
+
+- `AiGateway` — a LiteLLM proxy in front of one or more LLM providers.
+- `ToolGateway` — a LiteLLM proxy in front of one or more MCP tool servers, aggregated via `ToolRoute` resources.
 
 The operator is based on the [Operator SDK](https://sdk.operatorframework.io/) framework. 
 
@@ -34,7 +39,7 @@ Before working with this project, ensure you have the following tools installed 
 
 **Quick Start:**
 
-> **Note:** This operator requires the [AI Gateway Operator](https://github.com/agentic-layer/agent-runtime-operator) to be installed first, as it provides the required CRDs (`AiGateway` and `AiGatewayClass`).
+> **Note:** This operator requires the [AI Gateway Operator](https://github.com/agentic-layer/agent-runtime-operator) to be installed first, as it provides the required CRDs (`AiGateway`, `AiGatewayClass`, `ToolGateway`, `ToolGatewayClass`, `ToolRoute`, `ToolServer`).
 
 ```shell
 # Create local cluster and install cert-manager
@@ -42,10 +47,10 @@ kind create cluster
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.19.1/cert-manager.yaml
 
 # Install the AI Gateway Operator (provides CRDs)
-kubectl apply -f https://github.com/agentic-layer/agent-runtime-operator/releases/download/v0.13.0/install.yaml
+kubectl apply -f https://github.com/agentic-layer/agent-runtime-operator/releases/latest/download/install.yaml
 
 # Install the LiteLLM operator
-kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm-operator/releases/download/v0.2.0/install.yaml
+kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm-operator/releases/latest/download/install.yaml
 ```
 
 ## Development
@@ -67,7 +72,7 @@ make deploy
 ## Configuration
 
 
-### Custom Resource Configuration
+### AI Gateway
 
 To deploy a LiteLLM AI Gateway instance, you define an `AiGateway` resource. Here is an example configuration:
 
@@ -88,6 +93,42 @@ spec:
    - name: DEBUG
      value: "true"
 ```
+
+### Tool Gateway
+
+To deploy a LiteLLM-backed Tool Gateway, define a `ToolGateway` and one or more `ToolRoute` resources. The gateway aggregates each route's upstream MCP server into a single endpoint.
+
+```yaml
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: ToolGateway
+metadata:
+  name: my-tool-gateway
+  namespace: tools
+spec:
+  toolGatewayClassName: litellm
+---
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: ToolRoute
+metadata:
+  name: echo
+  namespace: tools
+spec:
+  toolGatewayRef:
+    name: my-tool-gateway
+    namespace: tools
+  upstream:
+    external:
+      url: http://echo.default/mcp
+```
+
+`ToolRoute.spec.upstream` accepts either:
+
+- `external.url` — an arbitrary HTTP(S) URL. Transport is auto-detected as `sse` when the path ends in `/sse`, otherwise `http`.
+- `toolServerRef` — a reference to a `ToolServer` resource managed in the cluster. The operator builds the in-cluster URL and uses `ToolServer.spec.transportType` (`http` or `sse`) for the transport.
+
+Each successfully-attached `ToolRoute` is published at `http://<gateway>.<namespace>.svc.cluster.local/mcp/<route-namespace>__<route-name>` and its `status.url` is updated accordingly.
+
+Both gateway kinds support `spec.guardrails` to attach `Guard` resources for traffic inspection (e.g. PII masking via Presidio). See `config/samples/aigateway_guarded.yaml` and `config/samples/toolgateway_guarded.yaml`.
 
 
 ## End-to-End (E2E) Testing
@@ -134,28 +175,39 @@ make cleanup-test-e2e
 
 ## Sample Data
 
-The project includes sample `AiGateway` custom resources to help you get started.
+The project includes sample `AiGateway` and `ToolGateway` custom resources to help you get started.
 
 * **Where to find sample data?**
-  Sample manifests are located in the `config/samples/` directory.
+  Sample manifests are located in the `config/samples/` directory:
 
-* **How to deploy a sample AI Gateway?**
-  You can deploy the sample "my-litellm" with the following `kubectl` command:
+  - `aigateway.yaml` — minimal `AiGateway` wired to a WireMock LLM stub.
+  - `aigateway_guarded.yaml` — `AiGateway` with a Presidio-backed PII `Guard`.
+  - `toolgateway.yaml` — minimal `ToolGateway` with an `external` `ToolRoute`.
+  - `toolgateway_guarded.yaml` — `ToolGateway` with a Presidio-backed PII `Guard` applied to MCP traffic.
+  - `backends/` — backing services used by the samples (WireMock LLM, Presidio, an MCP tool server).
+
+* **How to deploy the samples?**
 
   ```bash
+  # Apply the backing services first
+  kubectl apply -k config/samples/backends/
+  # Then apply the gateway samples
   kubectl apply -k config/samples/
   ```
 
-* **How to verify the sample AI Gateway?**
-  After applying the sample, you can check the status of the created resources:
+* **How to verify the samples?**
 
   ```bash
-  # Check the aigateway's status
-  kubectl get aigateways my-litellm -o yaml
-  ```
-  ```bash
-  # Check the deployment created by the operator
-  kubectl get deployments -l app.kubernetes.io/name=my-litellm
+  # Check gateway status
+  kubectl -n ai-gateway get aigateway ai-gateway -o yaml
+  kubectl -n tool-gateway get toolgateway tool-gateway -o yaml
+
+  # Check route status (status.url is set when the route is attached)
+  kubectl -n tool-gateway-routes get toolroute echo -o yaml
+
+  # Check the deployments created by the operator
+  kubectl -n ai-gateway get deployment ai-gateway
+  kubectl -n tool-gateway get deployment tool-gateway
   ```
 
 ## Contribution
