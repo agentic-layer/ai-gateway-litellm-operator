@@ -1,6 +1,8 @@
 # Demonstrates the LiteLLM config-patch escape hatch on an AiGateway. The
-# patch ConfigMap layers a router_settings block (an unmodeled top-level key)
-# onto the operator-generated config without a typed CRD change.
+# patch ConfigMap layers unmodeled top-level keys (router_settings,
+# general_settings) onto the operator-generated config without a typed CRD
+# change. The general_settings.master_key here is an illustration AND the
+# fixture our E2E test asserts against — replace it before production use.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -17,6 +19,8 @@ data:
       routing_strategy: usage-based-routing-v2
     litellm_settings:
       drop_params: true
+    general_settings:
+      master_key: sk-sample-1234
 ---
 apiVersion: runtime.agentic-layer.ai/v1alpha1
 kind: AiGateway
