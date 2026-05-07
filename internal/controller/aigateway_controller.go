@@ -142,12 +142,11 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if err := litellm.ReconcileWorkload(ctx, r.Client, r.Scheme, workload); err != nil {
-		var pe *litellm.PhaseError
 		// Add a case here whenever a new PhaseError.Phase is introduced in
 		// internal/litellm. Unrecognized phases fall through to "WorkloadFailed"
 		// — degraded but never silent.
 		reason := "WorkloadFailed"
-		if stderrors.As(err, &pe) {
+		if pe, ok := stderrors.AsType[*litellm.PhaseError](err); ok {
 			switch pe.Phase {
 			case "ConfigMap":
 				reason = "ConfigMapFailed"
@@ -221,7 +220,7 @@ func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGat
 	}
 
 	// Resolve guardrails from referenced Guard and GuardrailProvider resources
-	guardrails, err := litellm.ResolveGuardrails(ctx, r, aiGateway.Namespace, aiGateway.Spec.Guardrails)
+	guardrails, err := litellm.ResolveGuardrails(ctx, r, aiGateway.Namespace, aiGateway.Spec.Guardrails, litellm.GuardrailTargetLLM)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve guardrails: %w", err)
 	}

@@ -27,15 +27,37 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// GuardrailTarget selects the LiteLLM mode dialect to render. The Guard CRD
+// exposes a single `pre_call`/`post_call`/`during_call` vocabulary, but LiteLLM
+// distinguishes LLM-call guardrails (chat completions, etc.) from MCP-call
+// guardrails (tools/call). The mapping is applied per-call site so the Guard
+// resource itself stays portable across gateway kinds.
+type GuardrailTarget int
+
+const (
+	// GuardrailTargetLLM applies guardrails to chat-completion-style requests.
+	// Modes are passed to LiteLLM verbatim.
+	GuardrailTargetLLM GuardrailTarget = iota
+	// GuardrailTargetMCP applies guardrails to MCP tools/call requests.
+	// LiteLLM uses dedicated `pre_mcp_call` / `during_mcp_call` modes here;
+	// `post_call` has no MCP equivalent and is dropped — LiteLLM has no
+	// `post_mcp_call` hook (documented limitation in
+	// https://docs.litellm.ai/docs/proxy/guardrails/panw_prisma_airs).
+	GuardrailTargetMCP
+)
+
 // ResolveGuardrails fetches the Guard and GuardrailProvider resources referenced by
 // guardrailRefs (relative to defaultNamespace) and maps them to LiteLLM GuardrailConfig
-// entries. Returns an error if any referenced Guard or Provider cannot be fetched.
-// Unsupported provider types are skipped with a log line.
+// entries. Guard modes are translated to the dialect appropriate for target.
+// Returns an error if any referenced Guard or Provider cannot be fetched.
+// Unsupported provider types and Guards whose modes are all unsupported for the
+// target are skipped with a log line.
 func ResolveGuardrails(
 	ctx context.Context,
 	c client.Reader,
 	defaultNamespace string,
 	guardrailRefs []corev1.ObjectReference,
+	target GuardrailTarget,
 ) ([]GuardrailConfig, error) {
 	log := logf.FromContext(ctx)
 
@@ -69,9 +91,9 @@ func ResolveGuardrails(
 			)
 		}
 
-		cfg, err := buildGuardrailConfig(&guard, &provider)
+		cfg, err := buildGuardrailConfig(&guard, &provider, target)
 		if err != nil {
-			log.Error(err, "Skipping unsupported guardrail", "guard", guard.Name, "type", provider.Spec.Type)
+			log.Error(err, "Skipping guardrail", "guard", guard.Name, "type", provider.Spec.Type, "target", target)
 			continue
 		}
 		guardrails = append(guardrails, cfg)
@@ -81,11 +103,17 @@ func ResolveGuardrails(
 }
 
 // buildGuardrailConfig maps a Guard and its GuardrailProvider to a LiteLLM GuardrailConfig.
-func buildGuardrailConfig(guard *gatewayv1alpha1.Guard, provider *gatewayv1alpha1.GuardrailProvider) (GuardrailConfig, error) {
-	// Convert []GuardMode to []string for the LiteLLM YAML config.
-	modes := make([]string, len(guard.Spec.Mode))
-	for i, m := range guard.Spec.Mode {
-		modes[i] = string(m)
+func buildGuardrailConfig(guard *gatewayv1alpha1.Guard, provider *gatewayv1alpha1.GuardrailProvider, target GuardrailTarget) (GuardrailConfig, error) {
+	modes := make([]string, 0, len(guard.Spec.Mode))
+	for _, m := range guard.Spec.Mode {
+		mapped, ok := mapGuardMode(m, target)
+		if !ok {
+			continue
+		}
+		modes = append(modes, mapped)
+	}
+	if len(modes) == 0 {
+		return GuardrailConfig{}, fmt.Errorf("guard %s has no modes compatible with target %v", guard.Name, target)
 	}
 
 	params := GuardrailLiteLLMParams{
@@ -124,4 +152,22 @@ func buildGuardrailConfig(guard *gatewayv1alpha1.Guard, provider *gatewayv1alpha
 		GuardrailName: guard.Name,
 		LiteLLMParams: params,
 	}, nil
+}
+
+// mapGuardMode translates a Guard CRD mode to the LiteLLM proxy mode for the
+// given target. Returns (mapped, true) when the mode is supported, or
+// ("", false) when the target has no equivalent and the mode should be dropped.
+func mapGuardMode(mode gatewayv1alpha1.GuardMode, target GuardrailTarget) (string, bool) {
+	if target == GuardrailTargetLLM {
+		return string(mode), true
+	}
+	switch mode {
+	case gatewayv1alpha1.GuardModePreCall:
+		return "pre_mcp_call", true
+	case gatewayv1alpha1.GuardModeDuringCall:
+		return "during_mcp_call", true
+	default:
+		// post_call has no LiteLLM MCP equivalent (no post_mcp_call hook).
+		return "", false
+	}
 }

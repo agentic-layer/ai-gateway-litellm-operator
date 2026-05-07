@@ -18,6 +18,7 @@ package litellm
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	gatewayv1alpha1 "github.com/agentic-layer/agent-runtime-operator/api/v1alpha1"
@@ -41,7 +42,7 @@ func newScheme(t *testing.T) *runtime.Scheme {
 
 func TestResolveGuardrails_NoRefs(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
-	got, err := ResolveGuardrails(context.Background(), c, "default", nil)
+	got, err := ResolveGuardrails(context.Background(), c, "default", nil, GuardrailTargetLLM)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestResolveGuardrails_PresidioGuard(t *testing.T) {
 		WithObjects(guard, provider).
 		Build()
 
-	got, err := ResolveGuardrails(context.Background(), c, "default", []corev1.ObjectReference{{Name: "pii"}})
+	got, err := ResolveGuardrails(context.Background(), c, "default", []corev1.ObjectReference{{Name: "pii"}}, GuardrailTargetLLM)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -90,6 +91,9 @@ func TestResolveGuardrails_PresidioGuard(t *testing.T) {
 	}
 	if g.LiteLLMParams.Guardrail != "presidio" {
 		t.Errorf("Guardrail: want presidio, got %q", g.LiteLLMParams.Guardrail)
+	}
+	if len(g.LiteLLMParams.Mode) != 1 || g.LiteLLMParams.Mode[0] != "pre_call" {
+		t.Errorf("Mode: want [pre_call], got %v", g.LiteLLMParams.Mode)
 	}
 	if g.LiteLLMParams.PresidioAnalyzerApiBase != "http://presidio.svc:5002" {
 		t.Errorf("PresidioAnalyzerApiBase: want %q, got %q", "http://presidio.svc:5002", g.LiteLLMParams.PresidioAnalyzerApiBase)
@@ -104,7 +108,7 @@ func TestResolveGuardrails_PresidioGuard(t *testing.T) {
 
 func TestResolveGuardrails_MissingGuard(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
-	_, err := ResolveGuardrails(context.Background(), c, "default", []corev1.ObjectReference{{Name: "ghost"}})
+	_, err := ResolveGuardrails(context.Background(), c, "default", []corev1.ObjectReference{{Name: "ghost"}}, GuardrailTargetLLM)
 	if err == nil {
 		t.Errorf("expected error for missing Guard")
 	}
@@ -127,7 +131,7 @@ func TestResolveGuardrails_UnsupportedProviderTypeSkipped(t *testing.T) {
 		WithObjects(guard, provider).
 		Build()
 
-	got, err := ResolveGuardrails(context.Background(), c, "default", []corev1.ObjectReference{{Name: "g"}})
+	got, err := ResolveGuardrails(context.Background(), c, "default", []corev1.ObjectReference{{Name: "g"}}, GuardrailTargetLLM)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -150,8 +154,75 @@ func TestResolveGuardrails_MissingProvider(t *testing.T) {
 		WithObjects(guard).
 		Build()
 
-	_, err := ResolveGuardrails(context.Background(), c, "default", []corev1.ObjectReference{{Name: "g"}})
+	_, err := ResolveGuardrails(context.Background(), c, "default", []corev1.ObjectReference{{Name: "g"}}, GuardrailTargetLLM)
 	if err == nil {
 		t.Errorf("expected error for missing GuardrailProvider")
+	}
+}
+
+func TestResolveGuardrails_MCPMapsModes(t *testing.T) {
+	guard := &gatewayv1alpha1.Guard{
+		ObjectMeta: metav1.ObjectMeta{Name: "pii", Namespace: "default"},
+		Spec: gatewayv1alpha1.GuardSpec{
+			Mode:        []gatewayv1alpha1.GuardMode{"pre_call", "during_call", "post_call"},
+			ProviderRef: corev1.ObjectReference{Name: "presidio"},
+		},
+	}
+	provider := &gatewayv1alpha1.GuardrailProvider{
+		ObjectMeta: metav1.ObjectMeta{Name: "presidio", Namespace: "default"},
+		Spec: gatewayv1alpha1.GuardrailProviderSpec{
+			Type: "presidio-api",
+			Presidio: &gatewayv1alpha1.PresidioProviderConfig{
+				BaseUrl: "http://presidio.svc:5002",
+			},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(newScheme(t)).
+		WithObjects(guard, provider).
+		Build()
+
+	got, err := ResolveGuardrails(context.Background(), c, "default", []corev1.ObjectReference{{Name: "pii"}}, GuardrailTargetMCP)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("want 1 guardrail, got %d", len(got))
+	}
+	want := []string{"pre_mcp_call", "during_mcp_call"}
+	if !reflect.DeepEqual(got[0].LiteLLMParams.Mode, want) {
+		t.Errorf("Mode: want %v, got %v", want, got[0].LiteLLMParams.Mode)
+	}
+}
+
+func TestResolveGuardrails_MCPSkipsGuardWithOnlyPostCall(t *testing.T) {
+	// post_call has no MCP equivalent in LiteLLM. A Guard whose modes all map
+	// to nothing for the MCP target should be dropped entirely so we do not
+	// emit a malformed empty-mode entry into config.yaml.
+	guard := &gatewayv1alpha1.Guard{
+		ObjectMeta: metav1.ObjectMeta{Name: "audit", Namespace: "default"},
+		Spec: gatewayv1alpha1.GuardSpec{
+			Mode:        []gatewayv1alpha1.GuardMode{"post_call"},
+			ProviderRef: corev1.ObjectReference{Name: "presidio"},
+		},
+	}
+	provider := &gatewayv1alpha1.GuardrailProvider{
+		ObjectMeta: metav1.ObjectMeta{Name: "presidio", Namespace: "default"},
+		Spec: gatewayv1alpha1.GuardrailProviderSpec{
+			Type:     "presidio-api",
+			Presidio: &gatewayv1alpha1.PresidioProviderConfig{BaseUrl: "http://presidio.svc:5002"},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(newScheme(t)).
+		WithObjects(guard, provider).
+		Build()
+
+	got, err := ResolveGuardrails(context.Background(), c, "default", []corev1.ObjectReference{{Name: "audit"}}, GuardrailTargetMCP)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected guard with only post_call to be skipped for MCP target, got %d guardrails", len(got))
 	}
 }
