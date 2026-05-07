@@ -287,6 +287,24 @@ func (r *ToolGatewayReconciler) patchStatus(ctx context.Context, original, gw *g
 // that the reconciler re-runs whenever a ToolRoute, ToolServer, Guard,
 // GuardrailProvider, or the api-keys Secret changes.
 func (r *ToolGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	const toolGatewayConfigPatchIndex = "metadata.annotations.config-patch"
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1alpha1.ToolGateway{}, toolGatewayConfigPatchIndex,
+		func(obj client.Object) []string {
+			gw, ok := obj.(*gatewayv1alpha1.ToolGateway)
+			if !ok {
+				return nil
+			}
+			v, ok := gw.Annotations[litellm.ConfigPatchAnnotation]
+			if !ok || v == "" {
+				return nil
+			}
+			return []string{v}
+		},
+	); err != nil {
+		return fmt.Errorf("failed to register ToolGateway config-patch indexer: %w", err)
+	}
+
 	enqueueViaToolRoute := routeEventHandler()
 
 	// enqueueViaToolServer fans out via mapRouteToGateways for every route that
@@ -363,6 +381,29 @@ func (r *ToolGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return requests
 	})
 
+	// enqueueToolGatewaysForPatchConfigMap enqueues reconcile requests for all
+	// ToolGateways in the namespace whose config-patch annotation matches the
+	// name of the changed ConfigMap. The Owns(&corev1.ConfigMap{}) below
+	// already covers the operator-owned <gateway>-config ConfigMap; this
+	// watch is for user-supplied patch ConfigMaps. The workqueue dedupes if
+	// both fire for the same gateway.
+	enqueueToolGatewaysForPatchConfigMap := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		log := logf.FromContext(ctx)
+		var gwList gatewayv1alpha1.ToolGatewayList
+		if err := r.List(ctx, &gwList,
+			client.InNamespace(obj.GetNamespace()),
+			client.MatchingFields{toolGatewayConfigPatchIndex: obj.GetName()},
+		); err != nil {
+			log.Error(err, "Failed to list ToolGateways for patch ConfigMap watch", "namespace", obj.GetNamespace(), "configmap", obj.GetName())
+			return nil
+		}
+		requests := make([]reconcile.Request, len(gwList.Items))
+		for i, gw := range gwList.Items {
+			requests[i] = reconcile.Request{NamespacedName: types.NamespacedName{Name: gw.Name, Namespace: gw.Namespace}}
+		}
+		return requests
+	})
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gatewayv1alpha1.ToolGateway{}).
 		Owns(&appsv1.Deployment{}).
@@ -371,6 +412,7 @@ func (r *ToolGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&gatewayv1alpha1.ToolRoute{}, enqueueViaToolRoute).
 		Watches(&gatewayv1alpha1.ToolServer{}, enqueueViaToolServer).
 		Watches(&gatewayv1alpha1.ToolGatewayClass{}, enqueueAllToolGateways).
+		Watches(&corev1.ConfigMap{}, enqueueToolGatewaysForPatchConfigMap).
 		Watches(&gatewayv1alpha1.Guard{}, enqueueGatewaysInNamespace).
 		Watches(&gatewayv1alpha1.GuardrailProvider{}, enqueueGatewaysInNamespace).
 		Watches(
