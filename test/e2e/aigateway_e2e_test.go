@@ -145,3 +145,71 @@ var _ = Describe("AiGateway", Ordered, func() {
 		}, 1*time.Minute, 5*time.Second).Should(Succeed(), "Deployment should be updated with NO_DOCS env var")
 	})
 })
+
+var _ = Describe("AiGateway with config patch", Ordered, func() {
+	const sample = "config/samples/aigateway_with_patch.yaml"
+
+	BeforeAll(func() {
+		_, err := utils.Run(exec.Command("kubectl", "apply", "-f", sample))
+		Expect(err).NotTo(HaveOccurred(), "Failed to apply patched AiGateway sample")
+		Expect(utils.WaitForAllDeploymentsReady(3 * time.Minute)).To(Succeed())
+	})
+
+	AfterAll(func() {
+		_, _ = utils.Run(exec.Command("kubectl", "delete", "-f", sample, "--ignore-not-found=true"))
+	})
+
+	It("rejects unauthenticated requests after master_key is patched in", func() {
+		By("patching the patch ConfigMap to introduce general_settings.master_key")
+		patchScript := `kubectl -n ai-gateway-patched patch configmap ai-gateway-patch --type merge -p '` +
+			`{"data":{"patch.yaml":"router_settings:\n  routing_strategy: usage-based-routing-v2\nlitellm_settings:\n  drop_params: true\ngeneral_settings:\n  master_key: sk-e2e-test-1234\n"}}'`
+		_, err := utils.Run(exec.Command("bash", "-c", patchScript))
+		Expect(err).NotTo(HaveOccurred(), "Failed to patch ai-gateway-patch ConfigMap")
+
+		Expect(utils.WaitForAllDeploymentsReady(3 * time.Minute)).To(Succeed())
+
+		target := utils.ServiceTarget{Namespace: "ai-gateway-patched", ServiceName: "ai-gateway", Port: 80}
+
+		By("expecting non-2xx for unauthenticated /v1/models")
+		Eventually(func(g Gomega) {
+			_, statusCode, err := utils.MakeServiceRequest(target, func(baseURL string) ([]byte, int, error) {
+				b, _, status, err := utils.GetRequest(baseURL + "/v1/models")
+				return b, status, err
+			})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(statusCode).ToNot(Equal(200), "expected non-2xx for unauthenticated request")
+		}, 1*time.Minute, 5*time.Second).Should(Succeed())
+
+		By("expecting 200 with the configured master key")
+		Eventually(func(g Gomega) {
+			_, statusCode, err := utils.MakeServiceRequest(target, func(baseURL string) ([]byte, int, error) {
+				b, _, status, err := utils.GetRequestWithHeaders(baseURL+"/v1/models", map[string]string{
+					"Authorization": "Bearer sk-e2e-test-1234",
+				})
+				return b, status, err
+			})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(statusCode).To(Equal(200))
+		}, 1*time.Minute, 5*time.Second).Should(Succeed())
+	})
+
+	It("re-allows unauthenticated traffic after master_key is removed from the patch", func() {
+		By("removing master_key from the patch ConfigMap")
+		patchScript := `kubectl -n ai-gateway-patched patch configmap ai-gateway-patch --type merge -p '` +
+			`{"data":{"patch.yaml":"router_settings:\n  routing_strategy: usage-based-routing-v2\nlitellm_settings:\n  drop_params: true\n"}}'`
+		_, err := utils.Run(exec.Command("bash", "-c", patchScript))
+		Expect(err).NotTo(HaveOccurred(), "Failed to remove master_key from patch ConfigMap")
+
+		Expect(utils.WaitForAllDeploymentsReady(3 * time.Minute)).To(Succeed())
+
+		target := utils.ServiceTarget{Namespace: "ai-gateway-patched", ServiceName: "ai-gateway", Port: 80}
+		Eventually(func(g Gomega) {
+			_, statusCode, err := utils.MakeServiceRequest(target, func(baseURL string) ([]byte, int, error) {
+				b, _, status, err := utils.GetRequest(baseURL + "/v1/models")
+				return b, status, err
+			})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(statusCode).To(Equal(200))
+		}, 1*time.Minute, 5*time.Second).Should(Succeed())
+	})
+})

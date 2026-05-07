@@ -39,6 +39,20 @@ func GetRequest(url string) ([]byte, http.Header, int, error) {
 	return doRequest(req)
 }
 
+// GetRequestWithHeaders sends a GET request with extra headers and returns the
+// response body, response headers, status code, and error. Used when the
+// callee requires authentication or other headers.
+func GetRequestWithHeaders(url string, extraHeaders map[string]string) ([]byte, http.Header, int, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to create request: %w", err)
+	}
+	for k, v := range extraHeaders {
+		req.Header.Set(k, v)
+	}
+	return doRequest(req)
+}
+
 // PostRequest sends a POST request with additional headers and returns
 // the response body, response headers, status code, and error.
 // Use this when you need to inspect or forward response headers (e.g. Mcp-Session-Id).
