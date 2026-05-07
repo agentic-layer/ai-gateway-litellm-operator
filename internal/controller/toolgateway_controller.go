@@ -183,7 +183,7 @@ func (r *ToolGatewayReconciler) reconcile(ctx context.Context, gw *gatewayv1alph
 
 	servers, outcomes := buildMcpServers(ctx, r, gw, routeList.Items)
 
-	guardrails, err := litellm.ResolveGuardrails(ctx, r, gw.Namespace, gw.Spec.Guardrails)
+	guardrails, err := litellm.ResolveGuardrails(ctx, r, gw.Namespace, gw.Spec.Guardrails, litellm.GuardrailTargetMCP)
 	if err != nil {
 		return nil, &litellm.PhaseError{Phase: phaseGuardrails, Err: err}
 	}

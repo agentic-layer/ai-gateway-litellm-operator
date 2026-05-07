@@ -49,11 +49,25 @@ var _ = Describe("ToolGateway", Ordered, func() {
 		_, _ = utils.Run(exec.Command("kubectl", "delete", "-f", sample, "--ignore-not-found=true"))
 	})
 
+	const mcpPath = "/mcp/tool_gateway_routes__echo"
+
 	It("serves MCP tools/list", func() {
 		By("listing MCP tools")
 		Eventually(func(g Gomega) {
-			tools := utils.FetchTools(g, gatewayTarget, "/mcp/tool_gateway_routes__echo")
+			tools := utils.FetchTools(g, gatewayTarget, mcpPath)
 			g.Expect(tools).To(ContainElement("tool_gateway_routes__echo-echo_message"))
+		}, 1*time.Minute, 5*time.Second).Should(Succeed())
+	})
+
+	It("forwards MCP tools/call to the upstream echo server", func() {
+		By("calling the echo tool")
+		const message = "Hello, MCP!"
+		Eventually(func(g Gomega) {
+			result, err := utils.CallTool(g, gatewayTarget, mcpPath,
+				"tool_gateway_routes__echo-echo",
+				map[string]interface{}{"message": message})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(result).To(ContainSubstring(message))
 		}, 1*time.Minute, 5*time.Second).Should(Succeed())
 	})
 })

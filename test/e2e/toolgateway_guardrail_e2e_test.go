@@ -61,11 +61,38 @@ var _ = Describe("ToolGateway with guardrails", Ordered, func() {
 		}, 1*time.Minute, 5*time.Second).Should(Succeed())
 	})
 
+	const mcpPath = "/mcp/tool_gateway_guarded_routes__echo_guarded"
+
 	It("serves MCP tools/list through the guarded gateway", func() {
 		By("listing MCP tools")
 		Eventually(func(g Gomega) {
-			tools := utils.FetchTools(g, gatewayTarget, "/mcp/tool_gateway_guarded_routes__echo_guarded")
+			tools := utils.FetchTools(g, gatewayTarget, mcpPath)
 			g.Expect(tools).To(ContainElement("tool_gateway_guarded_routes__echo_guarded-echo_message"))
+		}, 1*time.Minute, 5*time.Second).Should(Succeed())
+	})
+
+	It("forwards tools/call through the guarded gateway", func() {
+		// Calling the echo tool through the guarded path proves the gateway
+		// applies the Guard at request time without breaking the call.
+		//
+		// We deliberately do NOT assert that PII in the arguments is masked.
+		// Our operator translates the Guard's pre_call mode to LiteLLM's
+		// pre_mcp_call mode (see internal/litellm/guardrails.go), and LiteLLM
+		// records the guardrail as applied — but the Presidio guardrail class
+		// in upstream LiteLLM has no async_pre_mcp_call_hook method (verified
+		// against tags v1.83.14-stable and main). The mode is accepted at
+		// config-load but the Presidio backend is never invoked for MCP
+		// traffic, so the arguments pass through unmasked. Re-arm the masking
+		// assertion once upstream wires Presidio into the MCP dispatcher.
+		const message = "Hello from the guarded gateway"
+
+		By("calling the echo tool through the guarded path")
+		Eventually(func(g Gomega) {
+			result, err := utils.CallTool(g, gatewayTarget, mcpPath,
+				"tool_gateway_guarded_routes__echo_guarded-echo",
+				map[string]interface{}{"message": message})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(result).To(ContainSubstring(message))
 		}, 1*time.Minute, 5*time.Second).Should(Succeed())
 	})
 })
