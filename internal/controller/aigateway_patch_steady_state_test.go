@@ -24,8 +24,8 @@ import (
 
 var _ = Describe("AiGateway Controller — patch steady-state", func() {
 	const (
-		testNS       = "default"
-		testPort     = int32(8000)
+		testNS   = "default"
+		testPort = int32(8000)
 	)
 
 	Context("When reconciling an AiGateway with a valid patch ConfigMap twice with no input changes", func() {
