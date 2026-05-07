@@ -57,6 +57,16 @@ const (
 
 	// ReasonAiGatewayRollingOut indicates the Deployment has not yet finished its rollout.
 	ReasonAiGatewayRollingOut = "DeploymentRollingOut"
+
+	// ReasonConfigGenerationFailed is the default reason for failures inside generateAiGatewayConfig.
+	ReasonConfigGenerationFailed = "ConfigGenerationFailed"
+
+	// ReasonGuardrailsResolutionFailed indicates a Guard / GuardrailProvider could not be resolved.
+	ReasonGuardrailsResolutionFailed = "GuardrailsResolutionFailed"
+
+	// ReasonConfigPatchInvalid indicates the config-patch annotation referenced a missing or
+	// malformed ConfigMap.
+	ReasonConfigPatchInvalid = "ConfigPatchInvalid"
 )
 
 const ControllerName = "aigateway.agentic-layer.ai/ai-gateway-litellm-controller"
@@ -116,11 +126,18 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Step 1: Generate configuration
 	configData, err := r.generateAiGatewayConfig(ctx, &aiGateway)
 	if err != nil {
+		reason := ReasonConfigGenerationFailed
+		if pe, ok := stderrors.AsType[*litellm.PhaseError](err); ok {
+			switch pe.Phase {
+			case "Guardrails":
+				reason = ReasonGuardrailsResolutionFailed
+			case "ConfigPatch":
+				reason = ReasonConfigPatchInvalid
+			}
+		}
 		log.Error(err, "Failed to generate configuration")
-		r.updateCondition(&aiGateway, AiGatewayConfigured, metav1.ConditionFalse,
-			"ConfigGenerationFailed", fmt.Sprintf("Failed to generate config: %v", err))
-		r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionFalse,
-			"ConfigGenerationFailed", "AiGateway not ready due to config generation failure")
+		r.updateCondition(&aiGateway, AiGatewayConfigured, metav1.ConditionFalse, reason, err.Error())
+		r.updateCondition(&aiGateway, AiGatewayReady, metav1.ConditionFalse, reason, err.Error())
 		if err := r.patchStatus(ctx, original, &aiGateway); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -199,7 +216,9 @@ func (r *AiGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
-// generateAiGatewayConfig generates the configuration using the appropriate generator
+// generateAiGatewayConfig renders the LiteLLM config for aiGateway, optionally
+// layering a user-supplied patch on top. Returns *litellm.PhaseError tagged with
+// the failing phase ("Guardrails" / "ConfigRender" / "ConfigPatch").
 func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGateway *gatewayv1alpha1.AiGateway) (string, error) {
 
 	log := logf.FromContext(ctx)
@@ -207,25 +226,21 @@ func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGat
 	// Build model list with proper provider prefixes and environment variable API keys
 	modelList := make([]litellm.ModelConfig, len(aiGateway.Spec.AiModels))
 	for i, model := range aiGateway.Spec.AiModels {
-
-		modelConfig := litellm.ModelConfig{
+		modelList[i] = litellm.ModelConfig{
 			ModelName: model.Name,
 			LiteLLMParams: litellm.LiteLLMParams{
 				Model:  fmt.Sprintf("%s/%s", model.Provider, model.Name),
 				ApiKey: fmt.Sprintf("os.environ/%s", r.getProviderApiKeyEnvVar(model)),
 			},
 		}
-
-		modelList[i] = modelConfig
 	}
 
 	// Resolve guardrails from referenced Guard and GuardrailProvider resources
 	guardrails, err := litellm.ResolveGuardrails(ctx, r, aiGateway.Namespace, aiGateway.Spec.Guardrails, litellm.GuardrailTargetLLM)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve guardrails: %w", err)
+		return "", &litellm.PhaseError{Phase: "Guardrails", Err: err}
 	}
 
-	// Build complete configuration with settings
 	config := litellm.LiteLLMConfig{
 		ModelList: modelList,
 		LiteLLMSettings: litellm.LiteLLMSettings{
@@ -237,13 +252,22 @@ func (r *AiGatewayReconciler) generateAiGatewayConfig(ctx context.Context, aiGat
 		Guardrails: guardrails,
 	}
 
-	// Generate YAML configuration
-	configYAML, err := litellm.RenderConfig(config)
+	patch, err := litellm.LoadPatch(ctx, r.Client, aiGateway.Namespace, aiGateway.Annotations[litellm.ConfigPatchAnnotation])
 	if err != nil {
 		return "", err
 	}
 
-	log.Info("Generated LiteLLM configuration", "aiGateway", aiGateway.Name, "models", len(aiGateway.Spec.AiModels), "guardrails", len(guardrails))
+	configYAML, err := litellm.RenderConfigWithPatch(config, patch)
+	if err != nil {
+		return "", &litellm.PhaseError{Phase: "ConfigRender", Err: err}
+	}
+
+	log.Info("Generated LiteLLM configuration",
+		"aiGateway", aiGateway.Name,
+		"models", len(aiGateway.Spec.AiModels),
+		"guardrails", len(guardrails),
+		"patched", patch != nil,
+	)
 
 	return configYAML, nil
 }
