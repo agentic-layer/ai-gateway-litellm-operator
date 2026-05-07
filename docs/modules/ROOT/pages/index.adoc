@@ -1,9 +1,12 @@
-= LiteLLM based AI Gateway
+= LiteLLM Gateway Operator
 
-This is a LiteLLM based implementation of the Agentic Layer AI Gateway.
+This operator provides LiteLLM-based implementations of the Agentic Layer AI Gateway and Tool Gateway.
 
 The AI Gateway is a component that sits between an AI Agent and a Large Language Model (LLM).
 It can handle tasks such as routing requests to different models, managing authentication, logging, and other middleware functions.
+
+The Tool Gateway is a component that sits between an AI Agent and one or more Model Context Protocol (MCP) tool servers.
+It aggregates upstream tool servers — referenced via `ToolRoute` resources — into a single MCP endpoint and applies guardrails to tool traffic.
 
 == How-To Guides
 

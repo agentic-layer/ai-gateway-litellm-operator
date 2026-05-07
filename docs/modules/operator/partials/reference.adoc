@@ -1,4 +1,4 @@
-= AI Gateway Reference
+= LiteLLM Gateway Operator Reference
 
 == Full API Reference
 
@@ -6,8 +6,27 @@ https://pkg.go.dev/github.com/agentic-layer/agent-runtime-operator/api/v1alpha1
 
 == CRDs
 
-The following Custom Resource Definitions (CRDs) are provided by the Agent Runtime Operator:
+The following Custom Resource Definitions (CRDs) are reconciled by this operator. They are defined by the Agent Runtime Operator and consumed here:
 
-* *AIGateway*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_aigateways.yaml
+=== AI Gateway
 
-* *AIGatewayClass*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_aigatewayclasses.yaml
+* *AiGateway*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_aigateways.yaml
+* *AiGatewayClass*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_aigatewayclasses.yaml
+
+The operator owns the `litellm` `AiGatewayClass` (controller `aigateway.agentic-layer.ai/ai-gateway-litellm-controller`) and reconciles every `AiGateway` that explicitly references it or — when no class is set — relies on it as the default class.
+
+=== Tool Gateway
+
+* *ToolGateway*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_toolgateways.yaml
+* *ToolGatewayClass*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_toolgatewayclasses.yaml
+* *ToolRoute*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_toolroutes.yaml
+* *ToolServer*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_toolservers.yaml
+
+The operator owns the `litellm` `ToolGatewayClass` (controller `litellm.agentic-layer.ai/tool-gateway-litellm-controller`) and reconciles every `ToolGateway` that explicitly references it or — when no class is set — relies on it as the default class. Each `ToolRoute` whose `toolGatewayRef` targets a reconciled gateway becomes an entry in the LiteLLM `mcp_servers` block; the route is exposed at `http://<gateway>.<namespace>.svc.cluster.local/mcp/<namespace>__<route-name>`.
+
+=== Guardrails
+
+* *Guard*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_guards.yaml
+* *GuardrailProvider*: https://github.com/agentic-layer/agent-runtime-operator/blob/main/config/crd/bases/runtime.agentic-layer.ai_guardrailproviders.yaml
+
+Both `AiGateway.spec.guardrails` and `ToolGateway.spec.guardrails` accept references to `Guard` resources, which the operator translates into LiteLLM guardrail callbacks.
