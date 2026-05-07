@@ -307,6 +307,57 @@ var _ = Describe("ToolGateway Controller", Ordered, func() {
 			Expect(yamlStr).To(ContainSubstring("auth_type: oauth2"), "patch field must be merged in")
 			Expect(yamlStr).To(ContainSubstring("Authorization: os.environ/TOKEN"))
 		})
+
+		It("rolls the deployment when the patch ConfigMap changes", func() {
+			rec := &ToolGatewayReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := rec.Reconcile(ctx, reconcile.Request{NamespacedName: gwKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			before := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, gwKey, before)).To(Succeed())
+			beforeHash := before.Spec.Template.Annotations["gateway.agentic-layer.ai/config-hash"]
+			Expect(beforeHash).ToNot(BeEmpty())
+
+			patchCM := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, patchCMKey, patchCM)).To(Succeed())
+			patchCM.Data["patch.yaml"] = "mcp_servers:\n  default__echo_route:\n    auth_type: api_key\n"
+			Expect(k8sClient.Update(ctx, patchCM)).To(Succeed())
+
+			_, err = rec.Reconcile(ctx, reconcile.Request{NamespacedName: gwKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			after := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, gwKey, after)).To(Succeed())
+			afterHash := after.Spec.Template.Annotations["gateway.agentic-layer.ai/config-hash"]
+			Expect(afterHash).ToNot(BeEmpty(), "config-hash annotation must be set after second reconcile")
+			Expect(afterHash).ToNot(Equal(beforeHash), "config-hash should change when patch.yaml changes")
+
+			afterCM := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: gwKey.Name + "-config", Namespace: gwKey.Namespace}, afterCM)).To(Succeed())
+			Expect(afterCM.Data["config.yaml"]).To(ContainSubstring("auth_type: api_key"))
+		})
+
+		It("drops the patch when the annotation is removed", func() {
+			rec := &ToolGatewayReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := rec.Reconcile(ctx, reconcile.Request{NamespacedName: gwKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			ownedCMBefore := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: gwKey.Name + "-config", Namespace: gwKey.Namespace}, ownedCMBefore)).To(Succeed())
+			Expect(ownedCMBefore.Data["config.yaml"]).To(ContainSubstring("auth_type: oauth2"), "patch should be present before annotation removal")
+
+			refreshed := &gatewayv1alpha1.ToolGateway{}
+			Expect(k8sClient.Get(ctx, gwKey, refreshed)).To(Succeed())
+			delete(refreshed.Annotations, litellm.ConfigPatchAnnotation)
+			Expect(k8sClient.Update(ctx, refreshed)).To(Succeed())
+
+			_, err = rec.Reconcile(ctx, reconcile.Request{NamespacedName: gwKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			ownedCM := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: gwKey.Name + "-config", Namespace: gwKey.Namespace}, ownedCM)).To(Succeed())
+			Expect(ownedCM.Data["config.yaml"]).NotTo(ContainSubstring("auth_type"))
+		})
 	})
 })
 
@@ -411,6 +462,7 @@ func TestIsTransientPhaseError(t *testing.T) {
 		{"plain error defaults to transient", errors.New("boom"), true},
 		{"ConfigRender is permanent", &litellm.PhaseError{Phase: "ConfigRender", Err: errors.New("yaml")}, false},
 		{"Guardrails is permanent", &litellm.PhaseError{Phase: "Guardrails", Err: errors.New("missing")}, false},
+		{"ConfigPatch is permanent", &litellm.PhaseError{Phase: "ConfigPatch", Err: errors.New("missing-cm")}, false},
 		{"ListRoutes is transient", &litellm.PhaseError{Phase: "ListRoutes", Err: errors.New("api")}, true},
 		{"ConfigMap is transient", &litellm.PhaseError{Phase: "ConfigMap", Err: errors.New("api")}, true},
 		{"Secret is transient", &litellm.PhaseError{Phase: "Secret", Err: errors.New("api")}, true},

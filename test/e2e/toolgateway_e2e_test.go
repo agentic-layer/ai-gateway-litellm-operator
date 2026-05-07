@@ -118,4 +118,24 @@ var _ = Describe("ToolGateway with config patch", Ordered, func() {
 			g.Expect(statusCode).To(Equal(200))
 		}, 1*time.Minute, 5*time.Second).Should(Succeed())
 	})
+
+	It("re-allows unauthenticated traffic after master_key is removed from the patch", func() {
+		By("removing master_key from the patch ConfigMap")
+		patchScript := `kubectl -n tool-gateway-patched patch configmap tool-gateway-patch --type merge -p '` +
+			`{"data":{"patch.yaml":"mcp_servers:\n  tool-gateway-patched-routes__echo:\n    auth_type: oauth2\n    headers:\n      Authorization: os.environ/MCP_TOKEN\n"}}'`
+		_, err := utils.Run(exec.Command("bash", "-c", patchScript))
+		Expect(err).NotTo(HaveOccurred(), "Failed to remove master_key from patch ConfigMap")
+
+		Expect(utils.WaitForAllDeploymentsReady(3 * time.Minute)).To(Succeed())
+
+		target := utils.ServiceTarget{Namespace: "tool-gateway-patched", ServiceName: "tool-gateway", Port: 80}
+		Eventually(func(g Gomega) {
+			_, statusCode, err := utils.MakeServiceRequest(target, func(baseURL string) ([]byte, int, error) {
+				b, _, status, err := utils.GetRequest(baseURL + "/v1/models")
+				return b, status, err
+			})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(statusCode).To(Equal(200))
+		}, 1*time.Minute, 5*time.Second).Should(Succeed())
+	})
 })

@@ -17,6 +17,10 @@ metadata:
   name: tool-gateway-patch
   namespace: tool-gateway-patched
 data:
+  # MCP_TOKEN must be supplied at runtime via spec.env or spec.envFrom on the
+  # ToolGateway — LiteLLM resolves the os.environ/<name> placeholder lazily,
+  # so the gateway will start without it but auth-forwarded requests will
+  # fail until the env var is set.
   patch.yaml: |
     mcp_servers:
       tool-gateway-patched-routes__echo:
