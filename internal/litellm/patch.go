@@ -86,3 +86,29 @@ func LoadPatch(ctx context.Context, c client.Client, ns, cmName string) (map[str
 	}
 	return parsed, nil
 }
+
+// RenderConfigWithPatch marshals cfg to YAML and, when patch is non-nil,
+// deep-merges patch on top using ApplyPatch. The result is a YAML string
+// suitable for the operator-owned ConfigMap consumed by the LiteLLM proxy.
+func RenderConfigWithPatch(cfg LiteLLMConfig, patch map[string]any) (string, error) {
+	if patch == nil {
+		return RenderConfig(cfg)
+	}
+	raw, err := yaml.Marshal(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal LiteLLM config: %w", err)
+	}
+	var base map[string]any
+	if err := yaml.Unmarshal(raw, &base); err != nil {
+		return "", fmt.Errorf("failed to round-trip LiteLLM config: %w", err)
+	}
+	if base == nil {
+		base = map[string]any{}
+	}
+	merged := ApplyPatch(base, patch)
+	out, err := yaml.Marshal(merged)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal merged LiteLLM config: %w", err)
+	}
+	return string(out), nil
+}

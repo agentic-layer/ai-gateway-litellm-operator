@@ -284,3 +284,70 @@ func newFakeClient(t *testing.T, objs ...client.Object) client.Client {
 	}
 	return fake.NewClientBuilder().WithScheme(s).WithObjects(objs...).Build()
 }
+
+func TestRenderConfigWithPatch_NilPatchEqualsRenderConfig(t *testing.T) {
+	cfg := LiteLLMConfig{
+		ModelList: []ModelConfig{{
+			ModelName:     "gpt-4",
+			LiteLLMParams: LiteLLMParams{Model: "openai/gpt-4", ApiKey: "os.environ/OPENAI_API_KEY"},
+		}},
+		LiteLLMSettings: LiteLLMSettings{RequestTimeout: 600, Callbacks: []string{"otel", "prometheus"}},
+	}
+	want, err := RenderConfig(cfg)
+	if err != nil {
+		t.Fatalf("RenderConfig: %v", err)
+	}
+	got, err := RenderConfigWithPatch(cfg, nil)
+	if err != nil {
+		t.Fatalf("RenderConfigWithPatch: %v", err)
+	}
+	if got != want {
+		t.Errorf("RenderConfigWithPatch(nil) != RenderConfig\n got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRenderConfigWithPatch_LayersPatchOnGeneratedKeys(t *testing.T) {
+	cfg := LiteLLMConfig{
+		McpServers: map[string]McpServer{
+			"echo": {Url: "http://echo", Transport: "http"},
+		},
+		LiteLLMSettings: LiteLLMSettings{RequestTimeout: 600, Callbacks: []string{"otel"}},
+	}
+	patch := map[string]any{
+		"router_settings": map[string]any{"routing_strategy": "usage-based-routing-v2"},
+		"mcp_servers": map[string]any{
+			"echo": map[string]any{"auth_type": "oauth2"},
+		},
+	}
+	got, err := RenderConfigWithPatch(cfg, patch)
+	if err != nil {
+		t.Fatalf("RenderConfigWithPatch: %v", err)
+	}
+	for _, want := range []string{
+		"url: http://echo",
+		"transport: http",
+		"auth_type: oauth2",
+		"routing_strategy: usage-based-routing-v2",
+		"request_timeout: 600",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("merged YAML missing %q\nfull output:\n%s", want, got)
+		}
+	}
+}
+
+func TestRenderConfigWithPatch_NullDeletesGeneratedKey(t *testing.T) {
+	cfg := LiteLLMConfig{
+		LiteLLMSettings: LiteLLMSettings{RequestTimeout: 600, Callbacks: []string{"otel"}},
+	}
+	patch := map[string]any{
+		"litellm_settings": map[string]any{"request_timeout": nil},
+	}
+	got, err := RenderConfigWithPatch(cfg, patch)
+	if err != nil {
+		t.Fatalf("RenderConfigWithPatch: %v", err)
+	}
+	if strings.Contains(got, "request_timeout") {
+		t.Errorf("expected request_timeout to be removed, got:\n%s", got)
+	}
+}
