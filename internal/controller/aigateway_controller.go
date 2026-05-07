@@ -350,6 +350,27 @@ func (r *AiGatewayReconciler) patchStatus(ctx context.Context, original, aiGatew
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AiGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Indexer key used to locate AiGateways by their config-patch annotation
+	// value. Used by the ConfigMap watch below to enqueue only the gateways in
+	// the namespace whose patch reference matches the changed ConfigMap.
+	const aiGatewayConfigPatchIndex = "metadata.annotations.config-patch"
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1alpha1.AiGateway{}, aiGatewayConfigPatchIndex,
+		func(obj client.Object) []string {
+			gw, ok := obj.(*gatewayv1alpha1.AiGateway)
+			if !ok {
+				return nil
+			}
+			v, ok := gw.Annotations[litellm.ConfigPatchAnnotation]
+			if !ok || v == "" {
+				return nil
+			}
+			return []string{v}
+		},
+	); err != nil {
+		return fmt.Errorf("failed to register AiGateway config-patch indexer: %w", err)
+	}
+
 	// enqueueAiGatewaysInNamespace enqueues reconcile requests for all AiGateway objects in
 	// the namespace of the triggering object.
 	enqueueAiGatewaysInNamespace := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
@@ -389,6 +410,23 @@ func (r *AiGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return requests
 	})
 
+	enqueueAiGatewaysForPatchConfigMap := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		log := logf.FromContext(ctx)
+		var gwList gatewayv1alpha1.AiGatewayList
+		if err := r.List(ctx, &gwList,
+			client.InNamespace(obj.GetNamespace()),
+			client.MatchingFields{aiGatewayConfigPatchIndex: obj.GetName()},
+		); err != nil {
+			log.Error(err, "Failed to list AiGateways for patch ConfigMap watch", "namespace", obj.GetNamespace(), "configmap", obj.GetName())
+			return nil
+		}
+		requests := make([]reconcile.Request, len(gwList.Items))
+		for i, gw := range gwList.Items {
+			requests[i] = reconcile.Request{NamespacedName: types.NamespacedName{Name: gw.Name, Namespace: gw.Namespace}}
+		}
+		return requests
+	})
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gatewayv1alpha1.AiGateway{}).
 		Owns(&appsv1.Deployment{}).
@@ -419,6 +457,7 @@ func (r *AiGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return requests
 			}),
 		).
+		Watches(&corev1.ConfigMap{}, enqueueAiGatewaysForPatchConfigMap).
 		// Watch Guard changes so that updates to a Guard trigger re-reconciliation of all
 		// AiGateway resources in the same namespace that may reference it.
 		Watches(&gatewayv1alpha1.Guard{}, enqueueAiGatewaysInNamespace).
