@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	gatewayv1alpha1 "github.com/agentic-layer/agent-runtime-operator/api/v1alpha1"
+	"github.com/agentic-layer/ai-gateway-litellm/internal/litellm"
 )
 
 const (
@@ -808,6 +809,158 @@ var _ = Describe("AiGateway Controller", func() {
 			// Verify old field names are NOT present
 			Expect(configContent).NotTo(ContainSubstring("presidio_entities:"))
 			Expect(configContent).NotTo(ContainSubstring("presidio_score_threshold:"))
+		})
+	})
+
+	Context("When reconciling an AiGateway with a config-patch annotation pointing at a missing ConfigMap", func() {
+		var aiGateway *gatewayv1alpha1.AiGateway
+		gatewayKey := types.NamespacedName{Name: "test-gateway-patch-missing", Namespace: testNamespace}
+		classKey := types.NamespacedName{Name: aiGatewayClassName}
+
+		BeforeEach(func() {
+			createDefaultClass(classKey)
+			aiGateway = &gatewayv1alpha1.AiGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      gatewayKey.Name,
+					Namespace: testNamespace,
+					Annotations: map[string]string{
+						litellm.ConfigPatchAnnotation: "missing-cm",
+					},
+				},
+				Spec: gatewayv1alpha1.AiGatewaySpec{
+					Port:     testPort,
+					AiModels: []gatewayv1alpha1.AiModel{{Name: "gpt-4", Provider: "openai"}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, aiGateway)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			cleanupAiGateway(gatewayKey)
+			cleanupAiGatewayClass(classKey)
+		})
+
+		It("flips Configured/Ready to False with ConfigPatchInvalid", func() {
+			rec := &AiGatewayReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := rec.Reconcile(ctx, reconcile.Request{NamespacedName: gatewayKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			refreshed := &gatewayv1alpha1.AiGateway{}
+			Expect(k8sClient.Get(ctx, gatewayKey, refreshed)).To(Succeed())
+			cond := findCondition(refreshed.Status.Conditions, "AiGatewayConfigured")
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal("ConfigPatchInvalid"))
+			Expect(cond.Message).To(ContainSubstring("not found"))
+
+			ready := findCondition(refreshed.Status.Conditions, "AiGatewayReady")
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal("ConfigPatchInvalid"))
+		})
+	})
+
+	Context("When reconciling an AiGateway with a valid patch ConfigMap", func() {
+		var aiGateway *gatewayv1alpha1.AiGateway
+		gatewayKey := types.NamespacedName{Name: "test-gateway-patch-ok", Namespace: testNamespace}
+		classKey := types.NamespacedName{Name: aiGatewayClassName}
+		patchCMKey := types.NamespacedName{Name: "ai-patch", Namespace: testNamespace}
+
+		BeforeEach(func() {
+			createDefaultClass(classKey)
+
+			Expect(k8sClient.Create(ctx, &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: patchCMKey.Name, Namespace: patchCMKey.Namespace},
+				Data: map[string]string{
+					"patch.yaml": "router_settings:\n  routing_strategy: usage-based-routing-v2\n",
+				},
+			})).To(Succeed())
+
+			aiGateway = &gatewayv1alpha1.AiGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      gatewayKey.Name,
+					Namespace: testNamespace,
+					Annotations: map[string]string{
+						litellm.ConfigPatchAnnotation: patchCMKey.Name,
+					},
+				},
+				Spec: gatewayv1alpha1.AiGatewaySpec{
+					Port:     testPort,
+					AiModels: []gatewayv1alpha1.AiModel{{Name: "gpt-4", Provider: "openai"}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, aiGateway)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			cleanupAiGateway(gatewayKey)
+			cleanupAiGatewayClass(classKey)
+			cleanupConfigMap(patchCMKey)
+		})
+
+		It("merges router_settings into the operator-owned ConfigMap", func() {
+			rec := &AiGatewayReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := rec.Reconcile(ctx, reconcile.Request{NamespacedName: gatewayKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			ownedCM := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: gatewayKey.Name + "-config", Namespace: testNamespace}, ownedCM)).To(Succeed())
+			yamlStr := ownedCM.Data["config.yaml"]
+			Expect(yamlStr).To(ContainSubstring("model_list"))
+			Expect(yamlStr).To(ContainSubstring("openai/gpt-4"))
+			Expect(yamlStr).To(ContainSubstring("router_settings"))
+			Expect(yamlStr).To(ContainSubstring("routing_strategy: usage-based-routing-v2"))
+		})
+
+		It("rolls the deployment when the patch ConfigMap changes", func() {
+			rec := &AiGatewayReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := rec.Reconcile(ctx, reconcile.Request{NamespacedName: gatewayKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			before := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, gatewayKey, before)).To(Succeed())
+			beforeHash := before.Spec.Template.Annotations["gateway.agentic-layer.ai/config-hash"]
+			Expect(beforeHash).ToNot(BeEmpty())
+
+			patchCM := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, patchCMKey, patchCM)).To(Succeed())
+			patchCM.Data["patch.yaml"] = "router_settings:\n  routing_strategy: simple-shuffle\n"
+			Expect(k8sClient.Update(ctx, patchCM)).To(Succeed())
+
+			_, err = rec.Reconcile(ctx, reconcile.Request{NamespacedName: gatewayKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			after := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, gatewayKey, after)).To(Succeed())
+			afterHash := after.Spec.Template.Annotations["gateway.agentic-layer.ai/config-hash"]
+			Expect(afterHash).ToNot(BeEmpty(), "config-hash annotation must be set after second reconcile")
+			Expect(afterHash).ToNot(Equal(beforeHash), "config-hash should change when patch.yaml changes")
+
+			afterCM := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: gatewayKey.Name + "-config", Namespace: testNamespace}, afterCM)).To(Succeed())
+			Expect(afterCM.Data["config.yaml"]).To(ContainSubstring("simple-shuffle"))
+		})
+
+		It("drops the patch when the annotation is removed", func() {
+			rec := &AiGatewayReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := rec.Reconcile(ctx, reconcile.Request{NamespacedName: gatewayKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			ownedCMBefore := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: gatewayKey.Name + "-config", Namespace: testNamespace}, ownedCMBefore)).To(Succeed())
+			Expect(ownedCMBefore.Data["config.yaml"]).To(ContainSubstring("router_settings"), "patch should be present before annotation removal")
+
+			refreshed := &gatewayv1alpha1.AiGateway{}
+			Expect(k8sClient.Get(ctx, gatewayKey, refreshed)).To(Succeed())
+			delete(refreshed.Annotations, litellm.ConfigPatchAnnotation)
+			Expect(k8sClient.Update(ctx, refreshed)).To(Succeed())
+
+			_, err = rec.Reconcile(ctx, reconcile.Request{NamespacedName: gatewayKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			ownedCM := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: gatewayKey.Name + "-config", Namespace: testNamespace}, ownedCM)).To(Succeed())
+			Expect(ownedCM.Data["config.yaml"]).NotTo(ContainSubstring("router_settings"))
 		})
 	})
 

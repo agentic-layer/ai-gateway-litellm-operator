@@ -1,0 +1,41 @@
+# Demonstrates the LiteLLM config-patch escape hatch on an AiGateway. The
+# patch ConfigMap layers unmodeled top-level keys (router_settings,
+# general_settings) onto the operator-generated config without a typed CRD
+# change. The general_settings.master_key here is an illustration AND the
+# fixture our E2E test asserts against — replace it before production use.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-gateway-patched
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-gateway-patch
+  namespace: ai-gateway-patched
+data:
+  patch.yaml: |
+    router_settings:
+      routing_strategy: usage-based-routing-v2
+    litellm_settings:
+      drop_params: true
+    general_settings:
+      master_key: sk-sample-1234
+---
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: AiGateway
+metadata:
+  name: ai-gateway
+  namespace: ai-gateway-patched
+  annotations:
+    ai-gateway-litellm.agentic-layer.ai/config-patch: ai-gateway-patch
+spec:
+  aiGatewayClassName: litellm
+  aiModels:
+    - provider: openai
+      name: gpt-3.5-turbo
+  env:
+    - name: OPENAI_API_BASE
+      value: http://wiremock.default:8080
+    - name: OPENAI_API_KEY
+      value: test-key
