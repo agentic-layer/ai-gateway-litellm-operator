@@ -25,6 +25,8 @@ import (
 // operator-generated LiteLLM config.
 const ConfigPatchAnnotation = "ai-gateway-litellm.agentic-layer.ai/config-patch"
 
+const configPatchPhase = "ConfigPatch"
+
 // ApplyPatch deep-merges patch onto base using RFC 7396 semantics:
 //   - Maps merge recursively, key by key.
 //   - Scalars and lists in the patch fully replace the value at that path.
@@ -71,15 +73,15 @@ func LoadPatch(ctx context.Context, c client.Client, ns, cmName string) (map[str
 	}
 	cm := &corev1.ConfigMap{}
 	if err := c.Get(ctx, types.NamespacedName{Namespace: ns, Name: cmName}, cm); err != nil {
-		return nil, &PhaseError{Phase: "ConfigPatch", Err: fmt.Errorf("configmap %q: %w", cmName, err)}
+		return nil, &PhaseError{Phase: configPatchPhase, Err: fmt.Errorf("configmap %q: %w", cmName, err)}
 	}
 	body, ok := cm.Data[PatchYAMLKey]
 	if !ok {
-		return nil, &PhaseError{Phase: "ConfigPatch", Err: fmt.Errorf("key %q not found in configmap %q", PatchYAMLKey, cmName)}
+		return nil, &PhaseError{Phase: configPatchPhase, Err: fmt.Errorf("key %q not found in configmap %q", PatchYAMLKey, cmName)}
 	}
 	var parsed map[string]any
 	if err := yaml.Unmarshal([]byte(body), &parsed); err != nil {
-		return nil, &PhaseError{Phase: "ConfigPatch", Err: fmt.Errorf("failed to parse %s: %w", PatchYAMLKey, err)}
+		return nil, &PhaseError{Phase: configPatchPhase, Err: fmt.Errorf("failed to parse %s: %w", PatchYAMLKey, err)}
 	}
 	if len(parsed) == 0 {
 		return nil, nil

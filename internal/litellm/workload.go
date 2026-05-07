@@ -65,8 +65,7 @@ type GatewayWorkload struct {
 // PhaseError tags a workload-reconcile failure with which step failed.
 // Callers can errors.As on this to map back to phase-specific status conditions.
 type PhaseError struct {
-	Phase string // "ConfigMap", "Deployment", "Service", "Secret",
-	             // "ConfigPatch", "ConfigRender", "Guardrails", "ListRoutes"
+	Phase string
 	Err   error
 }
 
