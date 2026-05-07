@@ -106,6 +106,18 @@ func TestApplyPatch(t *testing.T) {
 				"router_settings": map[string]any{"routing_strategy": "usage-based-routing-v2"},
 			},
 		},
+		{
+			name:  "null in patch deletes a top-level key",
+			base:  map[string]any{"model_list": []any{}, "litellm_settings": map[string]any{"timeout": 30}},
+			patch: map[string]any{"litellm_settings": nil},
+			want:  map[string]any{"model_list": []any{}},
+		},
+		{
+			name:  "null in patch for absent key is a no-op",
+			base:  map[string]any{"a": 1},
+			patch: map[string]any{"b": nil},
+			want:  map[string]any{"a": 1},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

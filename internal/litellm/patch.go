@@ -20,7 +20,10 @@ const ConfigPatchAnnotation = "ai-gateway-litellm.agentic-layer.ai/config-patch"
 //   - Scalars and lists in the patch fully replace the value at that path.
 //   - A nil value in the patch deletes the key from the result.
 //
-// ApplyPatch returns a new map; neither input is mutated.
+// ApplyPatch returns a new top-level map and never mutates either input.
+// The returned map may share inner sub-tree pointers with base for keys the
+// patch did not touch — callers must treat the result as read-only after the
+// call (the operator only marshals it to YAML, which never mutates).
 func ApplyPatch(base, patch map[string]any) map[string]any {
 	out := make(map[string]any, len(base))
 	for k, v := range base {
