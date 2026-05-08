@@ -1,0 +1,239 @@
+// REFERENCE — Diátaxis
+// This page is information-shaped: tables, field lists, full API surface.
+// DO: be exhaustive within scope; use stable, ctrl-F-able structure;
+//     one heading per resource/CRD/command/field group.
+// DON'T: include tutorials, decision trees, or "why" explanations.
+// If a section drifts into "how would you do X" → move to how-to-guide.adoc.
+// If a section drifts into "why this exists" → move to explanation.adoc.
+
+= LiteLLM Gateway Operator Reference
+
+This reference covers LiteLLM-specific implementation details of the LiteLLM Gateway Operator. For the `AiGateway`, `AiGatewayClass`, `ToolGateway`, and `ToolGatewayClass` CRD field tables, see xref:agent-runtime-operator:ai-gateways:reference.adoc[] and xref:agent-runtime-operator:tool-gateways:reference.adoc[].
+
+== Controller names
+
+The operator registers one controller for each gateway kind:
+
+[cols="1,3"]
+|===
+| Gateway kind | Controller name (`spec.controller`)
+
+| `AiGatewayClass`
+| `aigateway.agentic-layer.ai/ai-gateway-litellm-controller`
+
+| `ToolGatewayClass`
+| `litellm.agentic-layer.ai/tool-gateway-litellm-controller`
+|===
+
+An `AiGateway` with `spec.aiGatewayClassName: litellm` is claimed and reconciled by this operator. A `ToolGateway` with `spec.toolGatewayClassName: litellm` is claimed and reconciled by this operator.
+
+The shipped `litellm` `AiGatewayClass` and `ToolGatewayClass` are **not** marked as the cluster default. To claim `AiGateway` or `ToolGateway` resources that omit the class name field, add the corresponding `is-default-class` annotation via a Kustomize overlay:
+
+[source,yaml]
+----
+# kustomization.yaml
+resources:
+  - https://github.com/agentic-layer/ai-gateway-litellm-operator/releases/latest/download/install.yaml
+patches:
+  - patch: |-
+      apiVersion: runtime.agentic-layer.ai/v1alpha1
+      kind: AiGatewayClass
+      metadata:
+        name: litellm
+        annotations:
+          aigatewayclass.kubernetes.io/is-default-class: "true"
+  - patch: |-
+      apiVersion: runtime.agentic-layer.ai/v1alpha1
+      kind: ToolGatewayClass
+      metadata:
+        name: litellm
+        annotations:
+          toolgatewayclass.kubernetes.io/is-default-class: "true"
+----
+
+Use this only when this operator is the single AI/Tool Gateway implementation in the cluster.
+
+== Config-patch annotation
+
+[cols="1,3"]
+|===
+| Item | Value
+
+| Annotation key
+| `ai-gateway-litellm.agentic-layer.ai/config-patch`
+
+| Annotation target
+| `AiGateway` or `ToolGateway` resource
+
+| Value
+| Name of a `ConfigMap` in the same namespace as the gateway
+|===
+
+The ConfigMap must contain a key `patch.yaml` whose value is a partial LiteLLM config fragment. The operator deep-merges this onto the generated config using RFC 7396 map-merge semantics (see <<merge-semantics>>).
+
+== Config-patch ConfigMap schema
+
+The `patch.yaml` key in the ConfigMap must contain a YAML document that is a partial LiteLLM `config.yaml`. Any top-level key supported by LiteLLM can appear here. Common use cases:
+
+[cols="1,3"]
+|===
+| Key | Typical use
+
+| `router_settings`
+| Configure routing strategy, Redis-backed usage tracking, fallback models.
+
+| `general_settings`
+| Set `master_key`, `store_model_in_db`, `proxy_budget_rescheduler_min_time`.
+
+| `litellm_settings`
+| Override callbacks, request timeout, or add custom settings not exposed by the CRD.
+
+| `mcp_servers`
+| Add `auth_type` or other fields not surfaced in `ToolRoute` spec.
+|===
+
+[[merge-semantics]]
+=== Merge semantics
+
+* Maps merge recursively, key by key.
+* Scalars and lists in the patch fully replace the value at that path.
+* `null` in the patch deletes the key from the result.
+
+=== Status on patch failure
+
+If the annotation references a missing or malformed ConfigMap, both gateway `+*Configured+` and `+*Ready+` conditions flip to `False` with reason `ConfigPatchInvalid`. The condition message includes the underlying error (for example `configmap "x" not found`).
+
+== Supported LiteLLM features via typed CRD fields
+
+The operator generates these LiteLLM config blocks from typed CRD fields. Use the patch for anything outside this table.
+
+[cols="1,3"]
+|===
+| LiteLLM config block | Source CRD field(s)
+
+| `model_list`
+| `AiGateway.spec.aiModels` — each entry becomes a `model_list` item with the LiteLLM model identifier `+{provider}/{name}+` and an API key reference to the `api-key-secrets` Secret.
+
+| `mcp_servers`
+| `ToolGateway` + attached `ToolRoute` resources — each ready `ToolRoute` becomes an entry under `mcp_servers`, keyed by `+{namespace}__{route-name}+`.
+
+| `litellm_settings.callbacks`
+| Always set to `[otel, prometheus]` for OpenTelemetry tracing and Prometheus metrics. Override with the patch if needed (see <<caveats>>).
+
+| `litellm_settings.request_timeout`
+| Fixed at `600` seconds. Override with the patch if needed.
+
+| `guardrails`
+| `AiGateway.spec.guardrails` and `ToolGateway.spec.guardrails` — each referenced `Guard` / `GuardrailProvider` is translated into a LiteLLM guardrail entry.
+|===
+
+[[caveats]]
+=== Caveats
+
+* Patching `litellm_settings.callbacks` replaces the operator-generated `[otel, prometheus]` list. Include both entries if you need to extend rather than replace.
+* Patching `model_list` replaces the operator-generated list. Prefer `AiGateway.spec.aiModels` for all models.
+* Patching `guardrails` replaces the operator-generated list. Prefer `spec.guardrails` for all guards.
+* The operator does not validate the patch against LiteLLM's schema. Misconfiguration surfaces at LiteLLM startup, not in the operator.
+
+== Generated ConfigMap name pattern
+
+For each reconciled gateway, the operator creates an operator-owned `ConfigMap` in the same namespace:
+
+----
++<gateway-name>-config+
+----
+
+For example, an `AiGateway` named `my-ai-gateway` produces a ConfigMap named `my-ai-gateway-config`. The ConfigMap contains one key:
+
+[cols="1,3"]
+|===
+| Key | Description
+
+| `config.yaml`
+| Complete LiteLLM configuration, including any applied patch. Mounted at `/app/config/config.yaml` inside the LiteLLM container.
+|===
+
+== LiteLLM container defaults
+
+The operator manages the LiteLLM container in the generated `Deployment`.
+
+[cols="1,3"]
+|===
+| Item | Value
+
+| Container image
+| `ghcr.io/berriai/litellm:v1.83.14-stable.patch.2`
+
+| Container name
+| `litellm`
+
+| Container port
+| Configured by `AiGateway.spec.port` (default `80`); `ToolGateway` uses port `80`.
+
+| Service port
+| Same as container port (ClusterIP).
+
+| Memory request / limit
+| `250M` / `2G`
+
+| CPU request / limit
+| `100m` / `500m`
+
+| Liveness probe path
+| `GET /health/liveliness`
+
+| Readiness probe path
+| `GET /health/readiness`
+
+| Config volume mount
+| `/app/config` (mounts the `+<gateway>-config+` ConfigMap)
+
+| Prometheus multiprocess dir
+| `/prometheus_multiproc` (emptyDir volume)
+|===
+
+== Environment variables
+
+[cols="1,3"]
+|===
+| Variable | Source and behaviour
+
+| `+{PROVIDER}_API_KEY+`
+| Injected automatically for each provider listed in `AiGateway.spec.aiModels`. The provider name is upper-cased (for example `openai` → `OPENAI_API_KEY`). Values are sourced from the `api-key-secrets` Secret (key reference is optional; missing keys do not prevent startup).
+
+| `PROMETHEUS_MULTIPROC_DIR`
+| Always injected with value `/prometheus_multiproc`. Required by the LiteLLM Prometheus multi-process exporter. User-supplied env vars cannot override this.
+
+| Any variable in `spec.env` / `spec.envFrom`
+| Forwarded verbatim to the container. User-supplied variables win on name conflicts with operator-generated ones (except `PROMETHEUS_MULTIPROC_DIR`).
+|===
+
+== Pod restart annotation
+
+The operator annotates the pod template with a hash of the generated LiteLLM configuration and the `api-key-secrets` Secret:
+
+----
+runtime.agentic-layer.ai/config-hash: <16-character hex>
+runtime.agentic-layer.ai/secret-hash: <16-character hex>
+----
+
+When the config or Secret changes, the hash changes and Kubernetes rolls the `Deployment` automatically.
+
+== ToolRoute URL pattern
+
+Each successfully attached `ToolRoute` is exposed at:
+
+----
+http://+<gateway-name>.<namespace>.svc.cluster.local+/mcp/+<route-namespace>__<route-name>+
+----
+
+The `status.url` field on the `ToolRoute` resource is populated with this URL by the operator once the route is ready.
+
+== Related
+
+* xref:ai-gateway-litellm-operator::how-to-guides/install.adoc[]
+* xref:ai-gateway-litellm-operator::how-to-guides/create-gateway.adoc[]
+* xref:ai-gateway-litellm-operator::how-to-guides/patch-config.adoc[]
+* xref:ai-gateway-litellm-operator::explanation.adoc[]
+* xref:agent-runtime-operator:ai-gateways:reference.adoc[]
+* xref:agent-runtime-operator:tool-gateways:reference.adoc[]

@@ -1,0 +1,149 @@
+// HOW-TO GUIDE — Diátaxis
+// This page answers a goal-shaped question: "how do I do X?"
+// DO: assume context; give concrete steps; link to reference for fields.
+// DON'T: teach concepts; duplicate reference content; include long explanations.
+// If a section drifts into "what is this and why" → move to explanation.adoc.
+// If a section drifts into "exhaustive list of fields/values" → move to reference.adoc.
+// If a section turns into a from-zero walkthrough → move to a tutorial in a showcase repo.
+
+= Create a LiteLLM AiGateway or ToolGateway
+
+This guide shows you how to deploy an `AiGateway` or `ToolGateway` instance reconciled by the LiteLLM operator.
+
+== Prerequisites
+
+* xref:ai-gateway-litellm-operator::how-to-guides/install.adoc[LiteLLM Gateway Operator] installed.
+
+== Create an AiGateway
+
+An `AiGateway` with `spec.aiGatewayClassName: litellm` is claimed by this operator. The operator deploys a LiteLLM proxy that routes requests to the configured LLM providers.
+
+=== Create the API key Secret
+
+Create a `Secret` containing credentials for the LLM providers you plan to use. The operator looks up provider API keys by the convention `+{PROVIDER}_API_KEY+` (upper-cased provider name):
+
+[source,bash]
+----
+kubectl create secret generic api-key-secrets \
+  --namespace=ai-gateway \
+  --from-literal=OPENAI_API_KEY=$OPENAI_API_KEY \
+  --from-literal=GEMINI_API_KEY=$GEMINI_API_KEY \
+  --from-literal=ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+----
+
+NOTE: The Secret name must be `api-key-secrets`. Keys for providers not present in the Secret are treated as optional — the deployment still starts but the corresponding models will not authenticate successfully.
+
+=== Apply the AiGateway resource
+
+[source,yaml]
+----
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: AiGateway
+metadata:
+  name: my-ai-gateway
+  namespace: ai-gateway
+spec:
+  aiGatewayClassName: litellm
+  aiModels:
+    - provider: openai
+      name: gpt-4o
+    - provider: gemini
+      name: gemini-2.5-flash
+----
+
+[source,bash]
+----
+kubectl apply -f my-ai-gateway.yaml
+----
+
+The operator creates a LiteLLM `Deployment`, a `Service`, and a `ConfigMap` named `my-ai-gateway-config` containing the generated LiteLLM configuration.
+
+=== Verify
+
+[source,bash]
+----
+# Check the AiGateway status
+kubectl get aigateway my-ai-gateway -n ai-gateway -o yaml
+
+# Check the Deployment
+kubectl get deployment my-ai-gateway -n ai-gateway
+
+# Check the generated ConfigMap
+kubectl get configmap my-ai-gateway-config -n ai-gateway
+
+# Check pod logs
+kubectl logs -l app=my-ai-gateway -n ai-gateway -c litellm
+----
+
+The gateway is ready when the `AiGatewayReady` condition is `True`.
+
+== Create a ToolGateway
+
+A `ToolGateway` with `spec.toolGatewayClassName: litellm` is claimed by this operator. The operator deploys a LiteLLM proxy that aggregates MCP tool servers attached via `ToolRoute` resources.
+
+=== Apply the ToolGateway resource
+
+[source,yaml]
+----
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: ToolGateway
+metadata:
+  name: my-tool-gateway
+  namespace: tools
+spec:
+  toolGatewayClassName: litellm
+----
+
+[source,bash]
+----
+kubectl apply -f my-tool-gateway.yaml
+----
+
+=== Attach tool routes
+
+Create `ToolRoute` resources that reference the gateway. Each successfully attached route is exposed at `http://my-tool-gateway.tools.svc.cluster.local/mcp/+<namespace>__<route-name>+`:
+
+[source,yaml]
+----
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: ToolRoute
+metadata:
+  name: echo
+  namespace: tools
+spec:
+  toolGatewayRef:
+    name: my-tool-gateway
+    namespace: tools
+  upstream:
+    external:
+      url: http://echo.default/mcp
+----
+
+[source,bash]
+----
+kubectl apply -f tool-route.yaml
+----
+
+=== Verify
+
+[source,bash]
+----
+# Check the ToolGateway status
+kubectl get toolgateway my-tool-gateway -n tools -o yaml
+
+# Check the Deployment
+kubectl get deployment my-tool-gateway -n tools
+
+# Check that the route is attached (status.url is populated)
+kubectl get toolroute echo -n tools -o yaml
+----
+
+The gateway is ready when the `ToolGatewayReady` condition is `True`. Each attached `ToolRoute` has its `status.url` populated by the operator.
+
+== Related
+
+* xref:ai-gateway-litellm-operator::how-to-guides/patch-config.adoc[]
+* xref:ai-gateway-litellm-operator::reference.adoc[]
+* xref:agent-runtime-operator:ai-gateways:how-to-guide.adoc[]
+* xref:agent-runtime-operator:tool-gateways:how-to-guide.adoc[]
+* xref:agent-runtime-operator:tool-routes:how-to-guide.adoc[]

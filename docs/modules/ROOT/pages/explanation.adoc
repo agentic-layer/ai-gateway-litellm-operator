@@ -1,0 +1,53 @@
+// EXPLANATION — Diátaxis
+// This page is understanding-shaped: "what is this, why, how does it fit?"
+// DO: discuss design choices, alternatives, trade-offs; cross-link to how-to and reference.
+// DON'T: give step-by-step instructions; provide exhaustive field listings.
+// If a section drifts into "how do I do X" → move to how-to-guide.adoc.
+// If a section drifts into "list of all fields" → move to reference.adoc.
+
+= LiteLLM as the AI Gateway and Tool Gateway Implementation
+
+== What it is
+
+The LiteLLM Gateway Operator is a Kubernetes operator that implements both the `AiGateway` and `ToolGateway` contracts using https://www.litellm.ai/[LiteLLM], an open-source Python proxy that speaks OpenAI-compatible HTTP on one side and fans out to over 100 LLM providers on the other. On the tool-traffic side, LiteLLM also aggregates MCP servers into a single endpoint, making it a natural fit for both gateway roles.
+
+The operator watches `AiGateway` resources claiming the `litellm` class, watches `ToolGateway` resources claiming the same class, and for each resource deploys a LiteLLM proxy `Deployment`, a `Service`, and a `ConfigMap` containing the generated LiteLLM configuration.
+
+== Why it exists
+
+Agents need two distinct gateway types: one for LLM model routing (`AiGateway`) and one for MCP tool aggregation (`ToolGateway`). In most other implementations these are separate operators backed by separate gateway technologies. LiteLLM is unusual in that it handles both: its `model_list` block routes LLM traffic, and its `mcp_servers` block aggregates MCP endpoints. A single operator deployment covers both gateway types, reducing the operational footprint for teams that need both.
+
+The typed-CRD + config-patch design exists to balance usability and flexibility. The typed CRD fields (`spec.aiModels`, `spec.guardrails`, `ToolRoute` resources) cover the common cases and are validated, documentable, and future-proof. The config-patch escape hatch lets users reach LiteLLM features — router strategies, per-server auth, general settings — that are too niche or too volatile to warrant typed fields. The deep-merge semantics mean patches are additive by default: users express only the delta, not the entire config.
+
+== How it fits
+
+The operator plugs into the Agent Runtime Operator ecosystem via the `AiGatewayClass` and `ToolGatewayClass` resources. On startup the operator ensures both classes exist with their respective controller names, then claims every `AiGateway` whose `spec.aiGatewayClassName` is `litellm` and every `ToolGateway` whose `spec.toolGatewayClassName` is `litellm`.
+
+For `AiGateway` reconciliation, the operator reads `spec.aiModels` to build the LiteLLM `model_list`, resolves any referenced `Guard` resources to build the `guardrails` block, applies any user-supplied config patch, and materialises the LiteLLM proxy workload. The proxy then handles provider credential injection, retries, and request-level tracing transparently for all agents that route to it.
+
+For `ToolGateway` reconciliation, the operator reads the `ToolRoute` resources that reference the gateway, builds the `mcp_servers` block from each attached route, and materialises the same LiteLLM proxy workload. Each route is exposed at a deterministic sub-path on the proxy, and its `status.url` is populated so agents can discover the endpoint without hardcoding URLs.
+
+For the broader gateway/class pluggability pattern — how `AiGatewayClass` and `ToolGatewayClass` compose in the Agentic Layer — see xref:agent-gateway-krakend-operator::explanation.adoc[].
+
+== Trade-offs and alternatives
+
+=== Single operator for both gateway types vs. separate operators
+
+Bundling AI and Tool gateway support in one operator reduces install surface and ensures both gateway types share the same LiteLLM version and configuration pipeline. The trade-off is that the two gateway types are coupled to the same release cadence. Teams that need to upgrade the AI Gateway implementation independently of the Tool Gateway cannot do so without forking the operator.
+
+=== Typed CRD fields vs. a fully generic ConfigMap
+
+A fully generic design — where the entire LiteLLM config is just a user-managed ConfigMap — would give maximum flexibility but no schema validation, no status feedback on misconfiguration, and no ability for the platform to inject cross-cutting concerns (guardrails, OTel callbacks) automatically. The typed-CRD-plus-patch design provides guardrails around the common cases while preserving an escape hatch for advanced use.
+
+=== LiteLLM vs. other AI gateway implementations
+
+LiteLLM's breadth of provider support (100+ LLM backends via a unified API) and native MCP aggregation make it a practical default. The cost is that it is a Python process with higher startup latency and memory footprint than a compiled gateway. Teams running very high-throughput or latency-sensitive workloads may prefer a compiled gateway implementation. The `AiGatewayClass` / `ToolGatewayClass` pluggability pattern in the Agent Runtime Operator ensures that swapping to a different implementation does not require changing any `AiGateway` or `ToolGateway` manifests.
+
+== Related
+
+* xref:ai-gateway-litellm-operator::how-to-guides/install.adoc[]
+* xref:ai-gateway-litellm-operator::how-to-guides/create-gateway.adoc[]
+* xref:ai-gateway-litellm-operator::reference.adoc[]
+* xref:agent-gateway-krakend-operator::explanation.adoc[]
+* xref:agent-runtime-operator:ai-gateways:explanation.adoc[]
+* xref:agent-runtime-operator:tool-gateways:explanation.adoc[]

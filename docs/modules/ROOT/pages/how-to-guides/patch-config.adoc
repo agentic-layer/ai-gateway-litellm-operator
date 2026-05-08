@@ -1,0 +1,90 @@
+// HOW-TO GUIDE — Diátaxis
+// This page answers a goal-shaped question: "how do I do X?"
+// DO: assume context; give concrete steps; link to reference for fields.
+// DON'T: teach concepts; duplicate reference content; include long explanations.
+// If a section drifts into "what is this and why" → move to explanation.adoc.
+// If a section drifts into "exhaustive list of fields/values" → move to reference.adoc.
+// If a section turns into a from-zero walkthrough → move to a tutorial in a showcase repo.
+
+= Patch the LiteLLM Config
+
+This guide shows you how to apply a config patch to an `AiGateway` or `ToolGateway` when you need a LiteLLM feature not yet covered by the typed CRD fields — for example `router_settings`, `general_settings.master_key`, or per-server `auth_type` on `mcp_servers`.
+
+== Prerequisites
+
+* xref:ai-gateway-litellm-operator::how-to-guides/create-gateway.adoc[A running AiGateway or ToolGateway] managed by the LiteLLM operator.
+
+== Step 1: Create the patch ConfigMap
+
+Create a `ConfigMap` in the same namespace as the gateway. The map must contain a key named `patch.yaml` whose value is a partial LiteLLM config fragment:
+
+[source,yaml]
+----
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-litellm-patch
+  namespace: my-ns
+data:
+  patch.yaml: |
+    router_settings:
+      routing_strategy: usage-based-routing-v2
+      redis_host: redis.svc
+      redis_port: 6379
+----
+
+[source,bash]
+----
+kubectl apply -f my-litellm-patch.yaml
+----
+
+== Step 2: Annotate the gateway
+
+Add the `ai-gateway-litellm.agentic-layer.ai/config-patch` annotation to the `AiGateway` or `ToolGateway`, referencing the ConfigMap by name:
+
+[source,yaml]
+----
+apiVersion: runtime.agentic-layer.ai/v1alpha1
+kind: AiGateway
+metadata:
+  name: my-ai-gateway
+  namespace: my-ns
+  annotations:
+    ai-gateway-litellm.agentic-layer.ai/config-patch: my-litellm-patch
+spec:
+  aiGatewayClassName: litellm
+  aiModels:
+    - provider: openai
+      name: gpt-4o
+----
+
+[source,bash]
+----
+kubectl apply -f my-ai-gateway.yaml
+----
+
+The operator deep-merges `patch.yaml` onto the generated config and writes the result to the operator-owned `+<gateway>-config+` ConfigMap. Editing either the annotation or the patch ConfigMap re-renders the merged config and triggers a rolling restart of the gateway Deployment.
+
+== Verify
+
+[source,bash]
+----
+# Inspect the merged config
+kubectl get configmap my-ai-gateway-config -n my-ns -o yaml
+
+# Check that the gateway conditions are healthy
+kubectl get aigateway my-ai-gateway -n my-ns -o yaml
+----
+
+If the annotation references a missing or malformed ConfigMap, both `AiGatewayConfigured` and `AiGatewayReady` conditions flip to `False` with reason `ConfigPatchInvalid`. The condition message includes the underlying error (for example `configmap "my-litellm-patch" not found`).
+
+== Gotchas
+
+* `litellm_settings.callbacks` is a list. The operator generates `[otel, prometheus]`. If your patch sets `callbacks`, include `otel` and `prometheus` in your list — the patch replaces the operator's list wholesale.
+* Patching `model_list` (AiGateway) or `guardrails` replaces the operator-generated list. Prefer typed CRD fields for these.
+* The operator does not validate the patch against LiteLLM's schema. Misconfiguration surfaces at LiteLLM startup, not in the operator.
+
+== Related
+
+* xref:ai-gateway-litellm-operator::reference.adoc[]
+* xref:ai-gateway-litellm-operator::explanation.adoc[]

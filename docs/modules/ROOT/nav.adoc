@@ -1,8 +1,10 @@
 .How-To Guides
-* xref:operator:how-to-guide.adoc[]
-* xref:agent-runtime-operator:ai-gateways:how-to-guide.adoc[]
-* xref:agent-runtime-operator:guardrails:how-to-guide.adoc[]
+* xref:how-to-guides/install.adoc[]
+* xref:how-to-guides/create-gateway.adoc[]
+* xref:how-to-guides/patch-config.adoc[]
 
 .Reference
-* xref:operator:reference.adoc[]
-* xref:agent-runtime-operator:guardrails:reference.adoc[]
+* xref:reference.adoc[]
+
+.Explanation
+* xref:explanation.adoc[]

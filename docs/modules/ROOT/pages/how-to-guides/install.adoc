@@ -1,0 +1,86 @@
+// HOW-TO GUIDE — Diátaxis
+// This page answers a goal-shaped question: "how do I do X?"
+// DO: assume context; give concrete steps; link to reference for fields.
+// DON'T: teach concepts; duplicate reference content; include long explanations.
+// If a section drifts into "what is this and why" → move to explanation.adoc.
+// If a section drifts into "exhaustive list of fields/values" → move to reference.adoc.
+// If a section turns into a from-zero walkthrough → move to a tutorial in a showcase repo.
+
+= Install the LiteLLM Gateway Operator
+
+This guide walks you through installing the LiteLLM Gateway Operator (which reconciles `AiGateway` and `ToolGateway` resources) on your Kubernetes cluster.
+
+== Prerequisites
+
+* A running Kubernetes cluster with `kubectl` configured.
+* https://cert-manager.io/[cert-manager] installed for webhook TLS. Install it if you have not already:
++
+[source,bash]
+----
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.19.1/cert-manager.yaml
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=cert-manager -n cert-manager --timeout=60s
+----
+* xref:agent-runtime-operator:agent-runtime:how-to-guides/install.adoc[Agent Runtime Operator] installed (provides the required `AiGateway`, `AiGatewayClass`, `ToolGateway`, and `ToolGatewayClass` CRDs).
+
+== Install with kubectl
+
+[source,bash]
+----
+# Install the operator (always pulls the latest release)
+kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm-operator/releases/latest/download/install.yaml
+# Wait for the operator to be ready
+kubectl wait --for=condition=Available --timeout=60s -n ai-gateway-litellm-system deployment/ai-gateway-litellm-controller-manager
+----
+
+Browse all releases at https://github.com/agentic-layer/ai-gateway-litellm-operator/releases
+
+== Install with Flux
+
+If you are using Flux for GitOps, install the operator via its OCI repository:
+
+[source,yaml]
+----
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: ai-gateway-litellm-operator
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: oci://ghcr.io/agentic-layer/manifests/ai-gateway-litellm-operator
+  ref:
+    semver: ">= 0, < 1"
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: ai-gateway-litellm-operator
+  namespace: flux-system
+spec:
+  sourceRef:
+    kind: OCIRepository
+    name: ai-gateway-litellm-operator
+  interval: 10m
+  path: ./
+  prune: true
+  wait: true
+  dependsOn:
+    # Ensure cert-manager is installed first (if you install it with Flux as well)
+    - name: cert-manager
+----
+
+== Verify
+
+[source,bash]
+----
+# Check that the operator is running
+kubectl get pods -n ai-gateway-litellm-system
+----
+
+You should see the operator pod running in the `ai-gateway-litellm-system` namespace.
+
+== Related
+
+* xref:ai-gateway-litellm-operator::how-to-guides/create-gateway.adoc[]
+* xref:agent-runtime-operator:ai-gateways:how-to-guide.adoc[]
+* xref:agent-runtime-operator:tool-gateways:how-to-guide.adoc[]
