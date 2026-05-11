@@ -17,9 +17,11 @@ This guide walks you through installing the LiteLLM Gateway Operator (which reco
 +
 [source,bash]
 ----
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.19.1/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=cert-manager -n cert-manager --timeout=60s
 ----
++
+Browse all cert-manager releases at https://github.com/cert-manager/cert-manager/releases.
 * xref:agent-runtime-operator:agent-runtime:how-to-guides/install.adoc[Agent Runtime Operator] installed (provides the required `AiGateway`, `AiGatewayClass`, `ToolGateway`, and `ToolGatewayClass` CRDs).
 
 == Install with kubectl

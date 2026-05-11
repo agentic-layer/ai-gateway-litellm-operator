@@ -43,13 +43,17 @@ Before working with this project, ensure you have the following tools installed 
 
 ```shell
 # Create local cluster and install cert-manager
+# (always pulls the latest release;
+# see https://github.com/cert-manager/cert-manager/releases for the version list)
 kind create cluster
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.19.1/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
 
 # Install the AI Gateway Operator (provides CRDs)
+# Browse releases: https://github.com/agentic-layer/agent-runtime-operator/releases
 kubectl apply -f https://github.com/agentic-layer/agent-runtime-operator/releases/latest/download/install.yaml
 
 # Install the LiteLLM operator
+# Browse releases: https://github.com/agentic-layer/ai-gateway-litellm-operator/releases
 kubectl apply -f https://github.com/agentic-layer/ai-gateway-litellm-operator/releases/latest/download/install.yaml
 ```
 
