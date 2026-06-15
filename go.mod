@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/agentic-layer/agent-runtime-operator v0.28.1
 	github.com/onsi/ginkgo/v2 v2.31.0
-	github.com/onsi/gomega v1.41.0
+	github.com/onsi/gomega v1.42.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.36.2
 	k8s.io/apimachinery v0.36.2
